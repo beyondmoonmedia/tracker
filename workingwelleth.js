@@ -394,12 +394,6 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
     }
 }
 
-// SSL certificate configuration
-const sslOptions = {
-    key: fs.readFileSync('private.key'),     // Your private key file
-    cert: fs.readFileSync('certificate.crt'), // Your certificate file
-    ca: fs.readFileSync('ca_bundle.crt')      // Your CA bundle file
-};
 
 // Get the Express app instance from Parse Server instead of creating a new one
 const app = Parse.Server.app;
