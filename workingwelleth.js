@@ -713,7 +713,7 @@ parseServer.start().then(async () => {
     app.get('/', (req, res) => res.send('Server is running'));
 
     // Start the server
-    const PORT = process.env.PORT || 443;
+    const PORT = process.env.PORT || 80;
     app.listen(PORT, async () => {
         console.log(`
 Server is running!
