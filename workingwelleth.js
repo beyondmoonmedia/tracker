@@ -504,8 +504,8 @@ const dashboard = new ParseDashboard({
     }],
     users: [
         {
-            user: "admin",          // Change this to your desired username
-            pass: "strongpass123"   // Change this to your desired password
+            user: "adminSuper",          // Change this to your desired username
+            pass: "strongpass123!@#$ASDSSSS"   // Change this to your desired password
         },
         // You can add more users if needed:
         // {
