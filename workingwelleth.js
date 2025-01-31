@@ -399,6 +399,10 @@ const app = express();
 // Add body-parser middleware
 app.use(express.json());
 
+// Add at the top with other requires
+const BNB_RPC_URL = 'https://bsc-dataseed1.binance.org';
+const bnbProvider = new ethers.JsonRpcProvider(BNB_RPC_URL);
+
 // Add the webhook endpoint
 app.post('/webhook/transactions', async (req, res) => {
     try {
@@ -430,24 +434,33 @@ app.post('/webhook/transactions', async (req, res) => {
 
                 if (toAddress === trackedAddress) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
+                    console.log('Transaction details:', activity);
                     
-                    // Create transaction object in the format your processTransaction function expects
-                    const tx = {
-                        hash: activity.hash,
-                        from: activity.fromAddress,
-                        to: activity.toAddress,
-                        value: activity.value.toString(), // Convert to string as expected by the original code
-                        blockNumber: parseInt(activity.blockNum, 16), // Convert hex to decimal
-                    };
+                    try {
+                        // Create transaction object
+                        const tx = {
+                            hash: activity.hash,
+                            from: activity.fromAddress,
+                            to: activity.toAddress,
+                            value: activity.value.toString(),
+                            blockNumber: parseInt(activity.blockNum, 16),
+                        };
 
-                    // Get block information
-                    const receipt = await provider.waitForTransaction(activity.hash);
-                    console.log(receipt)
-                    const block = await provider.getBlock(receipt.blockNumber);
-                    console.log(block)
-                    // Process the transaction
-                    // Note: Assuming BNB transfers will be treated similar to ETH
-                    await processTransaction(activity.asset, tx, false, block, className);
+                        // Get block information using BNB provider
+                        const receipt = await bnbProvider.waitForTransaction(activity.hash);
+                        console.log('Transaction receipt:', receipt);
+                        
+                        const block = await bnbProvider.getBlock(receipt.blockNumber);
+                        console.log('Block details:', block);
+
+                        // Process the transaction
+                        await processTransaction(activity.asset, tx, false, block, className);
+                        console.log('Transaction processed successfully');
+                    } catch (error) {
+                        console.error('Error processing individual transaction:', error);
+                        // Continue with next transaction instead of failing the whole webhook
+                        continue;
+                    }
                 }
             }
         }
