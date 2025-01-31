@@ -430,6 +430,7 @@ app.post('/webhook/transactions', async (req, res) => {
 
                 if (toAddress === trackedAddress) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
+                    console.log(parseInt(activity.blockNum, 16))
                     
                     // Create transaction object in the format your processTransaction function expects
                     const tx = {
@@ -439,6 +440,7 @@ app.post('/webhook/transactions', async (req, res) => {
                         value: activity.value.toString(), // Convert to string as expected by the original code
                         blockNumber: parseInt(activity.blockNum, 16), // Convert hex to decimal
                     };
+                    console.log(tx)
 
                     // Get block information
                     const receipt = await provider.waitForTransaction(activity.hash);
