@@ -5,8 +5,11 @@ const { Alchemy, Network } = require('alchemy-sdk');
 const axios = require('axios');
 const { ethers } = require('ethers');
 require('dotenv').config();
-
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
+
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
@@ -392,7 +395,14 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
     }
 }
 
-// Add this new webhook endpoint handler
+// SSL certificate configuration
+const sslOptions = {
+    key: fs.readFileSync('private.key'),     // Your private key file
+    cert: fs.readFileSync('certificate.crt'), // Your certificate file
+    ca: fs.readFileSync('ca_bundle.crt')      // Your CA bundle file
+};
+
+// Webhook endpoint
 app.post('/webhook/transactions', express.json(), async (req, res) => {
     try {
         const { event } = req.body;
@@ -440,6 +450,32 @@ app.post('/webhook/transactions', express.json(), async (req, res) => {
         console.error('Error processing webhook:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// SSL verification route (if needed)
+app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req, res) => {
+    const filePath = path.join(__dirname, '.well-known', 'pki-validation', 'CA8A9209D7653245550200FC8EE46EBC.txt');
+    
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        console.error('File not found:', filePath);
+        res.status(404).send('File not found');
+    }
+});
+
+// Redirect HTTP to HTTPS
+http.createServer((req, res) => {
+    res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
+    res.end();
+}).listen(80);
+
+// Create and start HTTPS server
+const httpsServer = https.createServer(sslOptions, app);
+const PORT = 443; // Standard HTTPS port
+
+httpsServer.listen(PORT, () => {
+    console.log(`HTTPS Server running on port ${PORT}`);
 });
 
 // Replace the existing monitorEthereumTransfers function
