@@ -394,12 +394,15 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
     }
 }
 
+// Get the Express app instance
+const express = require('express');
+const app = express();
 
-// Get the Express app instance from Parse Server instead of creating a new one
-const app = Parse.Server.app;
+// Add body-parser middleware
+app.use(express.json());
 
-// Add the webhook endpoint to the existing app
-app.post('/webhook/transactions', express.json(), async (req, res) => {
+// Add the webhook endpoint
+app.post('/webhook/transactions', async (req, res) => {
     try {
         const { event } = req.body;
         
@@ -727,16 +730,5 @@ Server is running!
     console.error('Failed to start server:', error);
 });
 
-
-module.exports = {
-    setupWalletTracking,
-    updatePrice,
-    updateBonus,
-    addPricePeriod,
-    addBonusPeriod,
-    monitorEthereumTransfers,
-    processTransaction,
-    calculateTokenRewards,
-    getTokenPriceForTimestamp,
-    getBonusForTimestamp
-};
+// Make sure to export the app if you're using it in other files
+module.exports = app;
