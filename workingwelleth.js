@@ -112,6 +112,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         let tokenRewards;
         let timestamp;
         let blockNumber;
+        let bnbAmount = 0;
 
         if (block) {
             timestamp = new Date(block.timestamp * 1000);
@@ -123,12 +124,15 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         }
         
         if (type === 'BNB') {
+            // Handle BNB amount directly (it's already in BNB units)
+            bnbAmount = parseFloat(tx.value);
             const bnbPrice = await getBNBPrice(blockNumber);
-            amountInUSD = tx.value * bnbPrice;
-            console.log(`BNB Amount: ${tx.value} BNB`);
+            amountInUSD = bnbAmount * bnbPrice;
+            console.log(`BNB Amount: ${bnbAmount} BNB`);
             console.log(`BNB Price: $${bnbPrice}`);
             console.log(`USD Amount: $${amountInUSD}`);
         } else {
+            // Handle other tokens if needed
             const value = ethers.formatUnits(tx.value, 6); // Adjust decimals based on token
             amountInUSD = parseFloat(value);
         }
@@ -162,6 +166,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 blockNumber: blockNumber.toString(),
                 timestamp: timestamp,
                 amountInUSD: amountInUSD,
+                bnbAmount: type === 'BNB' ? bnbAmount : 0, // Add BNB amount to the saved data
                 tokenPrice: tokenPrice,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
