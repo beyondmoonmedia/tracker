@@ -460,8 +460,6 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                 // Convert addresses to lowercase for comparison
                 const toAddress = activity.toAddress.toLowerCase();
                 const trackedAddress = walletAddress.toLowerCase();
-                console.log(req.body.event.network)
-                console.log(className)
                 if (toAddress === trackedAddress && req.body.event.network === networks) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
                     
