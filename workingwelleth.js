@@ -8,9 +8,9 @@ require('dotenv').config();
 
 const path = require('path');
 // Constants
-const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'; // BSC USDT (BUSD)
-const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE'; // BSC BNB/USD feed
-const TOKEN_PRICE_USD = 0.013; // Price per token in USD
+const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
+exports.USDT_ADDRESS = USDT_ADDRESS;
+const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
 // Express and Parse Server setup
 const app = express();
 const config = {
@@ -27,16 +27,18 @@ const config = {
 // Initialize Alchemy for Ethereum Mainnet
 const alchemy = new Alchemy({
     apiKey: process.env.ALCHEMY_API_KEY,
-    network: 56,
+    network: Network.ETH_MAINNET,
     maxRetries: 10
 });
+exports.alchemy = alchemy;
 
 // Cache for ETH price
 let ethPriceCache = { price: 0, lastUpdate: 0 };
 const PRICE_CACHE_DURATION = 60 * 1000; // 1 minute
 
 // Add this after alchemy initialization
-const provider = new ethers.JsonRpcProvider(process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org/');
+const provider = new ethers.JsonRpcProvider(`https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
+exports.provider = provider;
 
 // Add these constants at the top
 const aggregatorV3InterfaceABI = [
@@ -57,24 +59,24 @@ const aggregatorV3InterfaceABI = [
 
 // Initialize Chainlink price feed contract
 const priceFeed = new ethers.Contract(
-    CHAINLINK_BNB_USD_FEED,
+    CHAINLINK_ETH_USD_FEED,
     aggregatorV3InterfaceABI,
     provider
 );
 
 // Replace getETHPrice function with this one
-async function getBNBPrice(blockNumber) {
+async function getETHPrice(blockNumber) {
     try {
         const price = await priceFeed.latestRoundData({ blockTag: blockNumber });
         return Number(price.answer) / 1e8; // Chainlink prices have 8 decimals
     } catch (error) {
         console.error("Error getting price from Chainlink:", error);
-        // Fallback to Binance price
+        // Fallback to Binance price if Chainlink fails
         try {
-            const response = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
+            const response = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT');
             return parseFloat(response.data.price);
         } catch (fallbackError) {
-            console.error('Error fetching BNB price from fallback:', fallbackError);
+            console.error('Error fetching ETH price from fallback:', fallbackError);
             return 0;
         }
     }
@@ -390,11 +392,63 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
     }
 }
 
-async function monitorBSCTransfers() {
+// Add this new webhook endpoint handler
+app.post('/webhook/transactions', express.json(), async (req, res) => {
+    try {
+        const { event } = req.body;
+        
+        // Verify it's a transaction event
+        if (event.type !== 'TRANSACTION') {
+            return res.status(200).json({ message: 'Not a transaction event' });
+        }
+
+        const tx = event.data;
+        
+        // Get all active wallets
+        const WalletConfig = Parse.Object.extend("WalletConfig");
+        const query = new Parse.Query(WalletConfig);
+        query.equalTo("isActive", true);
+        const activeWallets = await query.find({ useMasterKey: true });
+
+        // Process transaction for each active wallet
+        for (const walletConfig of activeWallets) {
+            const walletAddress = walletConfig.get("walletAddress");
+            const className = walletConfig.get("transactionClassName");
+
+            // Check for ETH transfers
+            if (tx.to?.toLowerCase() === walletAddress.toLowerCase() && tx.value && tx.value !== '0x0') {
+                console.log(`\nNew ETH transaction detected for ${walletAddress}`);
+                const receipt = await provider.waitForTransaction(tx.hash);
+                const block = await provider.getBlock(receipt.blockNumber);
+                await processTransaction('ETH', tx, false, block, className);
+            }
+            
+            // Check for USDT transfers
+            if (tx.to?.toLowerCase() === USDT_ADDRESS.toLowerCase() && tx.input.startsWith('0xa9059cbb')) {
+                const recipient = '0x' + tx.input.slice(34, 74);
+                if (recipient.toLowerCase() === walletAddress.toLowerCase()) {
+                    console.log(`\nNew USDT transaction detected for ${walletAddress}`);
+                    const receipt = await provider.waitForTransaction(tx.hash);
+                    const block = await provider.getBlock(receipt.blockNumber);
+                    await processTransaction('USDT', tx, false, block, className);
+                }
+            }
+        }
+
+        res.status(200).json({ message: 'Transaction processed successfully' });
+    } catch (error) {
+        console.error('Error processing webhook:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Replace the existing monitorEthereumTransfers function
+async function monitorEthereumTransfers() {
     const WalletConfig = Parse.Object.extend("WalletConfig");
     const query = new Parse.Query(WalletConfig);
     query.equalTo("isActive", true);
     
+    // Get all active wallet configurations
     const activeWallets = await query.find({ useMasterKey: true });
     
     if (activeWallets.length === 0) {
@@ -402,54 +456,48 @@ async function monitorBSCTransfers() {
         return;
     }
 
-    console.log(`Starting BSC monitoring for ${activeWallets.length} wallets`);
+    console.log(`Starting Ethereum monitoring for ${activeWallets.length} wallets`);
 
     for (const walletConfig of activeWallets) {
         const walletAddress = walletConfig.get("walletAddress");
         const className = walletConfig.get("transactionClassName");
+        
+        // Monitor historical transactions for each wallet
+        try {
+            console.log(`Fetching historical transactions for ${walletAddress}...`);
+            const incomingEth = await alchemy.core.getAssetTransfers({
+                fromBlock: "0x0",
+                toBlock: "latest",
+                toAddress: walletAddress,
+                category: ["external", "internal"],
+            });
 
-        // Set up event listeners for each wallet
-        provider.on({
-            address: walletAddress,
-            topics: []
-        }, async (log) => {
-            try {
-                const tx = await provider.getTransaction(log.transactionHash);
-                if (!tx) return;
+            const incomingUsdt = await alchemy.core.getAssetTransfers({
+                fromBlock: "0x0",
+                toBlock: "latest",
+                toAddress: walletAddress,
+                contractAddresses: [USDT_ADDRESS],
+                category: ["erc20"],
+            });
 
-                // Check if it's BNB transfer
-                if (tx.to?.toLowerCase() === walletAddress.toLowerCase() && tx.value && tx.value !== '0x0') {
-                    console.log(`\nNew pending BNB transaction detected for ${walletAddress}`);
-                    const receipt = await provider.waitForTransaction(tx.hash);
-                    const block = await provider.getBlock(receipt.blockNumber);
-                    await processTransaction('BNB', tx, false, block, className);
-                }
-                
-                // Check if it's USDT transfer
-                if (tx.to?.toLowerCase() === USDT_ADDRESS.toLowerCase()) {
-                    const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
-                    try {
-                        const decoded = iface.decodeFunctionData('transfer', tx.data);
-                        if (decoded.to.toLowerCase() === walletAddress.toLowerCase()) {
-                            console.log(`\nNew pending USDT transaction detected for ${walletAddress}`);
-                            const receipt = await provider.waitForTransaction(tx.hash);
-                            const block = await provider.getBlock(receipt.blockNumber);
-                            await processTransaction('USDT', tx, false, block, className);
-                        }
-                    } catch (e) {
-                        // Not a transfer function call
-                    }
-                }
-            } catch (error) {
-                console.error('Error processing new transaction:', error);
+            // Process historical transactions
+            for (const tx of incomingEth.transfers) {
+                await processTransaction('ETH', tx, true, null, className);
             }
-        });
+
+            for (const tx of incomingUsdt.transfers) {
+                await processTransaction('USDT', tx, true, null, className);
+            }
+        } catch (error) {
+            console.error(`Error processing historical transactions for ${walletAddress}:`, error);
+        }
     }
 
-    console.log('Transaction monitoring started successfully');
+    console.log('Historical transaction processing completed');
+    console.log('Webhook endpoint ready at /webhook/transactions');
 }
 
-// Update processTransaction to handle BNB instead of ETH
+// Update processTransaction to ensure wallet address is correctly passed
 async function processTransaction(type, tx, isHistorical = false, block = null, className) {
     try {
         const fullWalletAddress = tx.to.toLowerCase();
@@ -484,9 +532,9 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             
             blockNumber = tx.blockNum;
             
-            if (type === 'BNB') {
-                const bnbPrice = await getBNBPrice(blockNumber);
-                amountInUSD = parseFloat(tx.value) * bnbPrice;
+            if (type === 'ETH') {
+                const ethPrice = await getETHPrice(blockNumber);
+                amountInUSD = parseFloat(tx.value) * ethPrice;
             } else {
                 amountInUSD = parseFloat(tx.value);
             }
@@ -501,10 +549,10 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 blockNumber = txBlock.number;
             }
             
-            if (type === 'BNB') {
-                const bnbPrice = await getBNBPrice(blockNumber);
+            if (type === 'ETH') {
+                const ethPrice = await getETHPrice(blockNumber);
                 const value = ethers.formatEther(tx.value);
-                amountInUSD = parseFloat(value) * bnbPrice;
+                amountInUSD = parseFloat(value) * ethPrice;
             } else {
                 // Handle USDT amount
                 const value = ethers.formatUnits(tx.value, 6); // USDT has 6 decimals
@@ -625,10 +673,12 @@ parseServer.start().then(async () => {
     // Start the server
     const PORT = process.env.PORT || 1337;
     app.listen(PORT, async () => {
-        console.log(`Server is running!`);
+        console.log(`
+Server is running!
+        `);
 
-        // Start blockchain monitoring with BSC
-        monitorBSCTransfers().catch((error) => {
+        // Start blockchain monitoring
+        monitorEthereumTransfers().catch((error) => {
             console.error('Failed to start monitoring:', error);
         });
     });
@@ -643,10 +693,9 @@ module.exports = {
     updateBonus,
     addPricePeriod,
     addBonusPeriod,
-    monitorBSCTransfers,
+    monitorEthereumTransfers,
     processTransaction,
     calculateTokenRewards,
     getTokenPriceForTimestamp,
-    getBonusForTimestamp,
-    getBNBPrice
+    getBonusForTimestamp
 };
