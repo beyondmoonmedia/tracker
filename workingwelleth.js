@@ -9,10 +9,15 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const { app, bnbProvider, processTransaction, BNB_RPC_URL, CHAINLINK_BNB_USD_FEED, aggregatorV3InterfaceABI, priceFeedBNB } = require('./workingwellbsc');
+const axios = require('axios');
 
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
+const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE';
+exports.CHAINLINK_BNB_USD_FEED = CHAINLINK_BNB_USD_FEED;
+const BNB_RPC_URL = 'https://bsc-dataseed1.binance.org';
 const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
 // Express and Parse Server setup
 const config = {
@@ -63,6 +68,31 @@ const priceFeed = new ethers.Contract(
     provider
 );
 
+// Initialize Chainlink price feed contract for BNB
+const bnbProvider = new ethers.JsonRpcProvider(BNB_RPC_URL);
+exports.bnbProvider = bnbProvider;
+const priceFeedBNB = new ethers.Contract(
+    CHAINLINK_BNB_USD_FEED,
+    aggregatorV3InterfaceABI,
+    bnbProvider  // Use BSC provider instead of Ethereum provider
+);
+// Replace getBNBPrice function with this one
+async function getBNBPrice(blockNumber) {
+    try {
+        const price = await priceFeedBNB.latestRoundData({ blockTag: blockNumber });
+        return Number(price.answer) / 1e8; // Chainlink prices have 8 decimals
+    } catch (error) {
+        console.error("Error getting price from Chainlink:", error);
+        // Fallback to Binance price if Chainlink fails
+        try {
+            const response = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
+            return parseFloat(response.data.price);
+        } catch (fallbackError) {
+            console.error('Error fetching BNB price from fallback:', fallbackError);
+            return 0;
+        }
+    }
+}
 // Replace getETHPrice function with this one
 async function getETHPrice(blockNumber) {
     try {
@@ -399,6 +429,71 @@ app.use(express.json());
 
 // Add at the top with other requires
 
+app.post('/webhook/bsc/transactions', async (req, res) => {
+    try {
+        // Check if it's an address activity webhook
+        if (req.body.type !== 'ADDRESS_ACTIVITY') {
+            return res.status(200).json({ message: 'Not an address activity event' });
+        }
+
+        const activities = req.body.event.activity;
+        if (!Array.isArray(activities)) {
+            return res.status(200).json({ message: 'No activities to process' });
+        }
+        console.log(req.body)
+        // Get all active wallets
+        const WalletConfig = Parse.Object.extend("WalletConfig");
+        const query = new Parse.Query(WalletConfig);
+        query.equalTo("isActive", true);
+        const activeWallets = await query.find({ useMasterKey: true });
+        // Process each activity
+        for (const activity of activities) {
+            for (const walletConfig of activeWallets) {
+                const walletAddress = walletConfig.get("walletAddress");
+                const className = walletConfig.get("transactionClassName");
+                const networks = walletConfig.get("network");
+
+                // Convert addresses to lowercase for comparison
+                const toAddress = activity.toAddress.toLowerCase();
+                const trackedAddress = walletAddress.toLowerCase();
+                if (toAddress === trackedAddress && req.body.event.network === networks) {
+                    console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
+                    
+                    try {
+                        // Create transaction object
+                        const tx = {
+                            hash: activity.hash,
+                            from: activity.fromAddress,
+                            to: activity.toAddress,
+                            value: activity.value.toString(),
+                            blockNumber: parseInt(activity.blockNum, 16),
+                        };
+
+                        // Get block information using BNB provider
+                        const receipt = await bnbProvider.waitForTransaction(activity.hash);
+                        
+                        const block = await bnbProvider.getBlock(receipt.blockNumber);
+
+                        // Process the transaction
+                        console.log(className)
+                        await processTransaction(activity.asset, tx, false, block, className, "BNB");
+                        console.log('Transaction processed successfully');
+                    } catch (error) {
+                        console.error('Error processing individual transaction:', error);
+                        // Continue with next transaction instead of failing the whole webhook
+                        continue;
+                    }
+                }
+            }
+        }
+
+        res.status(200).json({ message: 'Transactions processed successfully' });
+    } catch (error) {
+        console.error('Error processing webhook:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Add the webhook endpoint
 app.post('/webhook/eth/transactions', async (req, res) => {
     try {
@@ -449,7 +544,7 @@ app.post('/webhook/eth/transactions', async (req, res) => {
                         const block = await provider.getBlock(receipt.blockNumber);
 
                         // Process the transaction
-                        await processTransaction(activity.asset, tx, false, block, className);
+                        await processTransaction(activity.asset, tx, false, block, className, "ETH");
                         console.log('Transaction processed successfully');
                     } catch (error) {
                         console.error('Error processing individual transaction:', error);
