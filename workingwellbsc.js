@@ -15,6 +15,7 @@ const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
 const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
 const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE';
+exports.CHAINLINK_BNB_USD_FEED = CHAINLINK_BNB_USD_FEED;
 const BNB_RPC_URL = 'https://bsc-dataseed1.binance.org';
 // Express and Parse Server setup
 const config = {
@@ -60,6 +61,7 @@ const aggregatorV3InterfaceABI = [
         type: "function"
     }
 ];
+exports.aggregatorV3InterfaceABI = aggregatorV3InterfaceABI;
 
 // Initialize Chainlink price feed contract
 const priceFeed = new ethers.Contract(
@@ -70,6 +72,7 @@ const priceFeed = new ethers.Contract(
 
 // Initialize Chainlink price feed contract for BNB
 const bnbProvider = new ethers.JsonRpcProvider(BNB_RPC_URL);
+exports.bnbProvider = bnbProvider;
 const priceFeedBNB = new ethers.Contract(
     CHAINLINK_BNB_USD_FEED,
     aggregatorV3InterfaceABI,
@@ -430,7 +433,7 @@ app.use(express.json());
 // Add at the top with other requires
 
 // Add the webhook endpoint
-app.post('/webhook/transactions', async (req, res) => {
+app.post('/webhook/BSCtransactions', async (req, res) => {
     try {
         // Check if it's an address activity webhook
         if (req.body.type !== 'ADDRESS_ACTIVITY') {
@@ -492,18 +495,6 @@ app.post('/webhook/transactions', async (req, res) => {
     } catch (error) {
         console.error('Error processing webhook:', error);
         res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// SSL verification route
-app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req, res) => {
-    const filePath = path.join(__dirname, '.well-known', 'pki-validation', 'CA8A9209D7653245550200FC8EE46EBC.txt');
-    
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        console.error('File not found:', filePath);
-        res.status(404).send('File not found');
     }
 });
 
