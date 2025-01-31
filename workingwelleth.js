@@ -403,8 +403,10 @@ app.use(express.json());
 app.post('/webhook/transactions', async (req, res) => {
     try {
         const { event } = req.body;
+        console.log(req);
         
         console.log(event);
+        console.log(event.activity[0].rawContract);
         // Verify it's a transaction event
         if (event.type !== 'TRANSACTION') {
             return res.status(200).json({ message: 'Not a transaction event' });
