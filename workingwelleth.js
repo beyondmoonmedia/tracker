@@ -10,7 +10,6 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const { app, bnbProvider, processTransaction, BNB_RPC_URL, CHAINLINK_BNB_USD_FEED, aggregatorV3InterfaceABI, priceFeedBNB } = require('./workingwellbsc');
-const axios = require('axios');
 
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
