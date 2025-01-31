@@ -443,7 +443,7 @@ app.post('/webhook/transactions', async (req, res) => {
                     // Get block information
                     const receipt = await provider.waitForTransaction(activity.hash);
                     const block = await provider.getBlock(receipt.blockNumber);
-
+                    console.log("called1")
                     // Process the transaction
                     // Note: Assuming BNB transfers will be treated similar to ETH
                     await processTransaction(activity.asset, tx, false, block, className);
@@ -572,6 +572,7 @@ async function monitorEthereumTransfers() {
 async function processTransaction(type, tx, isHistorical = false, block = null, className) {
     try {
         const fullWalletAddress = tx.to.toLowerCase();
+        console.log("called2")
         
         // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
