@@ -15,7 +15,7 @@ const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
 const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
 // Express and Parse Server setup
-const app = express();
+const app = Parse.Server.app;
 const config = {
   databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
   appId: process.env.PARSE_APP_ID || 'myAppId',
@@ -402,11 +402,13 @@ const sslOptions = {
     ca: fs.readFileSync('ca_bundle.crt')      // Your CA bundle file
 };
 
-// Webhook endpoint
+// Get the Express app instance from Parse Server instead of creating a new one
+const app = Parse.Server.app;
+
+// Add the webhook endpoint to the existing Express app
 app.post('/webhook/transactions', express.json(), async (req, res) => {
     try {
         const { event } = req.body;
-        console.log(req)
         
         // Verify it's a transaction event
         if (event.type !== 'TRANSACTION') {
@@ -453,7 +455,7 @@ app.post('/webhook/transactions', express.json(), async (req, res) => {
     }
 });
 
-// SSL verification route (if needed)
+// SSL verification route
 app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req, res) => {
     const filePath = path.join(__dirname, '.well-known', 'pki-validation', 'CA8A9209D7653245550200FC8EE46EBC.txt');
     
@@ -465,22 +467,27 @@ app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req
     }
 });
 
-// Create and start HTTPS server
-const httpsServer = https.createServer(sslOptions, app);
-const HTTPS_PORT = 443; // HTTPS port
-const HTTP_PORT = 80;   // HTTP port for redirect
+// Create HTTPS server using the existing Express app
+const sslOptions = {
+    key: fs.readFileSync('private.key'),
+    cert: fs.readFileSync('certificate.crt'),
+    ca: fs.readFileSync('ca_bundle.crt')
+};
 
-// Modify the HTTP redirect server
+const httpsServer = https.createServer(sslOptions, app);
+const HTTPS_PORT = 443;
+
+// Start HTTPS server
+httpsServer.listen(HTTPS_PORT, () => {
+    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+});
+
+// Optional: HTTP to HTTPS redirect server
 http.createServer((req, res) => {
     res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
     res.end();
-}).listen(HTTP_PORT, () => {
-    console.log(`HTTP Server running on port ${HTTP_PORT} (redirecting to HTTPS)`);
-});
-
-// Start HTTPS server on port 443
-httpsServer.listen(HTTPS_PORT, () => {
-    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+}).listen(80, () => {
+    console.log('HTTP redirect server running on port 80');
 });
 
 // Replace the existing monitorEthereumTransfers function
