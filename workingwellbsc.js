@@ -480,6 +480,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                         const block = await bnbProvider.getBlock(receipt.blockNumber);
 
                         // Process the transaction
+                        console.log(className)
                         await processTransaction(activity.asset, tx, false, block, className);
                         console.log('Transaction processed successfully');
                     } catch (error) {
