@@ -465,18 +465,22 @@ app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req
     }
 });
 
-// Redirect HTTP to HTTPS
+// Create and start HTTPS server
+const httpsServer = https.createServer(sslOptions, app);
+const HTTPS_PORT = 443; // HTTPS port
+const HTTP_PORT = 80;   // HTTP port for redirect
+
+// Modify the HTTP redirect server
 http.createServer((req, res) => {
     res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
     res.end();
-}).listen(80);
+}).listen(HTTP_PORT, () => {
+    console.log(`HTTP Server running on port ${HTTP_PORT} (redirecting to HTTPS)`);
+});
 
-// Create and start HTTPS server
-const httpsServer = https.createServer(sslOptions, app);
-const PORT = 443; // Standard HTTPS port
-
-httpsServer.listen(PORT, () => {
-    console.log(`HTTPS Server running on port ${PORT}`);
+// Start HTTPS server on port 443
+httpsServer.listen(HTTPS_PORT, () => {
+    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
 });
 
 // Replace the existing monitorEthereumTransfers function
