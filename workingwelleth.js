@@ -402,50 +402,56 @@ app.use(express.json());
 // Add the webhook endpoint
 app.post('/webhook/transactions', async (req, res) => {
     try {
-        const { event } = req.body;
-        console.log(req);
-        
-        console.log(event);
-        console.log(event.activity[0].rawContract);
-        // Verify it's a transaction event
-        if (event.type !== 'TRANSACTION') {
-            return res.status(200).json({ message: 'Not a transaction event' });
+        // Check if it's an address activity webhook
+        if (req.body.type !== 'ADDRESS_ACTIVITY') {
+            return res.status(200).json({ message: 'Not an address activity event' });
         }
 
-        const tx = event.data;
-        
+        const activities = req.body.event.activity;
+        if (!Array.isArray(activities)) {
+            return res.status(200).json({ message: 'No activities to process' });
+        }
+
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
         query.equalTo("isActive", true);
         const activeWallets = await query.find({ useMasterKey: true });
 
-        // Process transaction for each active wallet
-        for (const walletConfig of activeWallets) {
-            const walletAddress = walletConfig.get("walletAddress");
-            const className = walletConfig.get("transactionClassName");
+        // Process each activity
+        for (const activity of activities) {
+            for (const walletConfig of activeWallets) {
+                const walletAddress = walletConfig.get("walletAddress");
+                const className = walletConfig.get("transactionClassName");
 
-            // Check for ETH transfers
-            if (tx.to?.toLowerCase() === walletAddress.toLowerCase() && tx.value && tx.value !== '0x0') {
-                console.log(`\nNew ETH transaction detected for ${walletAddress}`);
-                const receipt = await provider.waitForTransaction(tx.hash);
-                const block = await provider.getBlock(receipt.blockNumber);
-                await processTransaction('ETH', tx, false, block, className);
-            }
-            
-            // Check for USDT transfers
-            if (tx.to?.toLowerCase() === USDT_ADDRESS.toLowerCase() && tx.input.startsWith('0xa9059cbb')) {
-                const recipient = '0x' + tx.input.slice(34, 74);
-                if (recipient.toLowerCase() === walletAddress.toLowerCase()) {
-                    console.log(`\nNew USDT transaction detected for ${walletAddress}`);
-                    const receipt = await provider.waitForTransaction(tx.hash);
+                // Convert addresses to lowercase for comparison
+                const toAddress = activity.toAddress.toLowerCase();
+                const trackedAddress = walletAddress.toLowerCase();
+
+                if (toAddress === trackedAddress) {
+                    console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
+                    
+                    // Create transaction object in the format your processTransaction function expects
+                    const tx = {
+                        hash: activity.hash,
+                        from: activity.fromAddress,
+                        to: activity.toAddress,
+                        value: activity.value.toString(), // Convert to string as expected by the original code
+                        blockNumber: parseInt(activity.blockNum, 16), // Convert hex to decimal
+                    };
+
+                    // Get block information
+                    const receipt = await provider.waitForTransaction(activity.hash);
                     const block = await provider.getBlock(receipt.blockNumber);
-                    await processTransaction('USDT', tx, false, block, className);
+
+                    // Process the transaction
+                    // Note: Assuming BNB transfers will be treated similar to ETH
+                    await processTransaction(activity.asset, tx, false, block, className);
                 }
             }
         }
 
-        res.status(200).json({ message: 'Transaction processed successfully' });
+        res.status(200).json({ message: 'Transactions processed successfully' });
     } catch (error) {
         console.error('Error processing webhook:', error);
         res.status(500).json({ error: 'Internal server error' });
