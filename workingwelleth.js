@@ -515,12 +515,15 @@ const dashboard = new ParseDashboard({
     ],
     useEncryptedPasswords: false  // Set to true in production for better security
 }, { allowInsecureHTTP: true });
+
+// Start Parse Server first
 parseServer.start()
 
 // Mount Parse Server and Dashboard
 app.use('/parse', parseServer.app);
 app.use('/dashboard', dashboard);
 app.get('/', (req, res) => res.send('Server is running'));
+
 // Start the server and blockchain tracking
 
 const httpsServer = https.createServer(sslOptions, app);
