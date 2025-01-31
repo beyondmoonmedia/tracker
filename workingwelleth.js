@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const { bnbProvider } = require('./workingwellbsc');
 
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
@@ -681,6 +682,14 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         let blockNumber;
 
 
+        if (block) {
+            timestamp = new Date(block.timestamp * 1000);
+            blockNumber = block.number;
+        } else {
+            const txBlock = await bnbProvider.getBlock(tx.blockNumber);
+            timestamp = new Date(txBlock.timestamp * 1000);
+            blockNumber = txBlock.number;
+        }
         if (networks === 'ETH') {
             const ethPrice = await getETHPrice(blockNumber);
             // Value is already in ETH from the webhook, no need to format
