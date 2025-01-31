@@ -406,6 +406,7 @@ const sslOptions = {
 app.post('/webhook/transactions', express.json(), async (req, res) => {
     try {
         const { event } = req.body;
+        console.log(req)
         
         // Verify it's a transaction event
         if (event.type !== 'TRANSACTION') {
