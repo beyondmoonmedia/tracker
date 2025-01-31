@@ -639,9 +639,10 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             
             blockNumber = tx.blockNum;
             
-            if (type === 'BNB') {  // Changed from 'ETH' to 'BNB'
+            if (type === 'BNB') {
                 const bnbPrice = await getBNBPrice(blockNumber);
-                amountInUSD = parseFloat(tx.value) * bnbPrice;
+                // Value is already in BNB, just multiply by price
+                amountInUSD = tx.value * bnbPrice;
             } else {
                 amountInUSD = parseFloat(tx.value);
             }
@@ -655,10 +656,13 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 blockNumber = txBlock.number;
             }
             
-            if (type === 'BNB') {  // Changed from 'ETH' to 'BNB'
+            if (type === 'BNB') {
                 const bnbPrice = await getBNBPrice(blockNumber);
-                const value = ethers.formatEther(tx.value);
-                amountInUSD = parseFloat(value) * bnbPrice;
+                // Value is already in BNB from the webhook, no need to format
+                amountInUSD = tx.value * bnbPrice;
+                console.log(`BNB Amount: ${tx.value} BNB`);
+                console.log(`BNB Price: $${bnbPrice}`);
+                console.log(`USD Amount: $${amountInUSD}`);
             } else {
                 // Handle other token amounts
                 const value = ethers.formatUnits(tx.value, 6); // Adjust decimals based on token
