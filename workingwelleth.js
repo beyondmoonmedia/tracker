@@ -14,6 +14,8 @@ const http = require('http');
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
 const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
+const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE';
+const BNB_RPC_URL = 'https://bsc-dataseed1.binance.org';
 // Express and Parse Server setup
 const config = {
   databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
@@ -66,6 +68,14 @@ const priceFeed = new ethers.Contract(
     provider
 );
 
+// Initialize Chainlink price feed contract for BNB
+const bnbProvider = new ethers.JsonRpcProvider(BNB_RPC_URL);
+const priceFeedBNB = new ethers.Contract(
+    CHAINLINK_BNB_USD_FEED,
+    aggregatorV3InterfaceABI,
+    bnbProvider  // Use BSC provider instead of Ethereum provider
+);
+
 // Replace getETHPrice function with this one
 async function getETHPrice(blockNumber) {
     try {
@@ -79,6 +89,24 @@ async function getETHPrice(blockNumber) {
             return parseFloat(response.data.price);
         } catch (fallbackError) {
             console.error('Error fetching ETH price from fallback:', fallbackError);
+            return 0;
+        }
+    }
+}
+
+// Replace getBNBPrice function with this one
+async function getBNBPrice(blockNumber) {
+    try {
+        const price = await priceFeedBNB.latestRoundData({ blockTag: blockNumber });
+        return Number(price.answer) / 1e8; // Chainlink prices have 8 decimals
+    } catch (error) {
+        console.error("Error getting price from Chainlink:", error);
+        // Fallback to Binance price if Chainlink fails
+        try {
+            const response = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
+            return parseFloat(response.data.price);
+        } catch (fallbackError) {
+            console.error('Error fetching BNB price from fallback:', fallbackError);
             return 0;
         }
     }
@@ -400,8 +428,6 @@ const app = express();
 app.use(express.json());
 
 // Add at the top with other requires
-const BNB_RPC_URL = 'https://bsc-dataseed1.binance.org';
-const bnbProvider = new ethers.JsonRpcProvider(BNB_RPC_URL);
 
 // Add the webhook endpoint
 app.post('/webhook/transactions', async (req, res) => {
@@ -583,7 +609,7 @@ async function monitorEthereumTransfers() {
 async function processTransaction(type, tx, isHistorical = false, block = null, className) {
     try {
         const fullWalletAddress = tx.to.toLowerCase();
-        console.log("called2")
+        console.log("Processing transaction for", fullWalletAddress);
         
         // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
@@ -602,43 +628,40 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         let blockNumber;
 
         if (isHistorical) {
-            // Fix for timestamp extraction
             if (tx.metadata && tx.metadata.blockTimestamp) {
                 timestamp = new Date(tx.metadata.blockTimestamp);
             } else if (block) {
                 timestamp = new Date(block.timestamp * 1000);
             } else {
-                // Get block information if we don't have timestamp
-                const txBlock = await provider.getBlock(tx.blockNum);
+                const txBlock = await bnbProvider.getBlock(tx.blockNum);
                 timestamp = new Date(txBlock.timestamp * 1000);
             }
             
             blockNumber = tx.blockNum;
             
-            if (type === 'ETH') {
-                const ethPrice = await getETHPrice(blockNumber);
-                amountInUSD = parseFloat(tx.value) * ethPrice;
+            if (type === 'BNB') {  // Changed from 'ETH' to 'BNB'
+                const bnbPrice = await getBNBPrice(blockNumber);
+                amountInUSD = parseFloat(tx.value) * bnbPrice;
             } else {
                 amountInUSD = parseFloat(tx.value);
             }
         } else {
-            // ... existing non-historical processing ...
             if (block) {
                 timestamp = new Date(block.timestamp * 1000);
                 blockNumber = block.number;
             } else {
-                const txBlock = await provider.getBlock(tx.blockNumber);
+                const txBlock = await bnbProvider.getBlock(tx.blockNumber);
                 timestamp = new Date(txBlock.timestamp * 1000);
                 blockNumber = txBlock.number;
             }
             
-            if (type === 'ETH') {
-                const ethPrice = await getETHPrice(blockNumber);
+            if (type === 'BNB') {  // Changed from 'ETH' to 'BNB'
+                const bnbPrice = await getBNBPrice(blockNumber);
                 const value = ethers.formatEther(tx.value);
-                amountInUSD = parseFloat(value) * ethPrice;
+                amountInUSD = parseFloat(value) * bnbPrice;
             } else {
-                // Handle USDT amount
-                const value = ethers.formatUnits(tx.value, 6); // USDT has 6 decimals
+                // Handle other token amounts
+                const value = ethers.formatUnits(tx.value, 6); // Adjust decimals based on token
                 amountInUSD = parseFloat(value);
             }
         }
