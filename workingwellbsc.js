@@ -444,13 +444,12 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
         }
-
+        console.log(req.body)
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
         query.equalTo("isActive", true);
         const activeWallets = await query.find({ useMasterKey: true });
-
         // Process each activity
         for (const activity of activities) {
             for (const walletConfig of activeWallets) {
@@ -461,7 +460,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                 const toAddress = activity.toAddress.toLowerCase();
                 const trackedAddress = walletAddress.toLowerCase();
 
-                if (toAddress === trackedAddress) {
+                if (toAddress === trackedAddress && req.body.event.network === className) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
                     
                     try {
