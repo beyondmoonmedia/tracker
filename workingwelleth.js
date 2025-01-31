@@ -394,8 +394,6 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
     }
 }
 
-// Get the Express app instance
-const express = require('express');
 const app = express();
 
 // Add body-parser middleware
