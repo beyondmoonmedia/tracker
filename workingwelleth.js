@@ -434,7 +434,6 @@ app.post('/webhook/transactions', async (req, res) => {
 
                 if (toAddress === trackedAddress) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
-                    console.log('Transaction details:', activity);
                     
                     try {
                         // Create transaction object
@@ -448,10 +447,8 @@ app.post('/webhook/transactions', async (req, res) => {
 
                         // Get block information using BNB provider
                         const receipt = await bnbProvider.waitForTransaction(activity.hash);
-                        console.log('Transaction receipt:', receipt);
                         
                         const block = await bnbProvider.getBlock(receipt.blockNumber);
-                        console.log('Block details:', block);
 
                         // Process the transaction
                         await processTransaction(activity.asset, tx, false, block, className);
@@ -502,38 +499,13 @@ const dashboard = new ParseDashboard({
         masterKey: config.masterKey,
         appName: "Blockchain Tracker"
     }],
-    users: [
-        {
-            user: "adminSuper",          // Change this to your desired username
-            pass: "strongpass123!@#$ASDSSSS"   // Change this to your desired password
-        },
-        // You can add more users if needed:
-        // {
-        //     user: "user2",
-        //     pass: "password2"
-        // }
-    ],
-    useEncryptedPasswords: false  // Set to true in production for better security
 }, { allowInsecureHTTP: true });
+parseServer.start()
 
-// Start Parse Server first
-parseServer.start().then(() => {
-    console.log('Parse Server started successfully');
-    
-    // Mount Parse Server and Dashboard
-    app.use('/parse', parseServer.app);
-    app.use('/dashboard', dashboard);
-    
-    console.log('Dashboard configured with:');
-    console.log('Username:', 'adminSuper');
-    console.log('Password:', 'strongpass123!@#$ASDSSSS');
-    console.log('Access at: https://your-domain.com/dashboard');
-    
-    app.get('/', (req, res) => res.send('Server is running'));
-}).catch(error => {
-    console.error('Error starting Parse Server:', error);
-});
-
+// Mount Parse Server and Dashboard
+app.use('/parse', parseServer.app);
+app.use('/dashboard', dashboard);
+app.get('/', (req, res) => res.send('Server is running'));
 // Start the server and blockchain tracking
 
 const httpsServer = https.createServer(sslOptions, app);
