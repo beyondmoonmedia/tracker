@@ -19,8 +19,8 @@ const config = {
   databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
   appId: process.env.PARSE_APP_ID || 'myAppId',
   masterKey: process.env.PARSE_MASTER_KEY || 'myMasterKey',
-  serverURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/',
-  publicServerURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/',
+  serverURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+  publicServerURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
   allowClientClassCreation: false,
   allowExpiredAuthDataToken: false,
   cloud: path.join(__dirname, '/cloud/main.js'),
@@ -468,6 +468,26 @@ const sslOptions = {
     ca: fs.readFileSync('ca_bundle.crt')
 };
 
+// Initialize Parse Server
+const parseServer = new ParseServer(config);
+
+const dashboard = new ParseDashboard({
+    apps: [{
+        serverURL: config.serverURL,
+        publicServerURL: config.publicServerURL,
+        appId: config.appId,
+        masterKey: config.masterKey,
+        appName: "Blockchain Tracker"
+    }],
+}, { allowInsecureHTTP: true });
+parseServer.start()
+
+// Mount Parse Server and Dashboard
+app.use('/parse', parseServer.app);
+app.use('/dashboard', dashboard);
+app.get('/', (req, res) => res.send('Server is running'));
+// Start the server and blockchain tracking
+
 const httpsServer = https.createServer(sslOptions, app);
 const HTTPS_PORT = 443;
 
@@ -691,42 +711,6 @@ async function updateBonus(walletAddress, newBonus, startDate, endDate) {
     }
 }
 
-// Initialize Parse Server
-const parseServer = new ParseServer(config);
-
-// Start the server and blockchain tracking
-parseServer.start().then(async () => {
-    // Initialize Parse Dashboard
-    const dashboard = new ParseDashboard({
-        apps: [{
-            serverURL: config.serverURL,
-            publicServerURL: config.publicServerURL,
-            appId: config.appId,
-            masterKey: config.masterKey,
-            appName: "Blockchain Tracker"
-        }],
-    }, { allowInsecureHTTP: true });
-
-    // Mount Parse Server and Dashboard
-    app.use('/parse', parseServer.app);
-    app.use('/dashboard', dashboard);
-    app.get('/', (req, res) => res.send('Server is running'));
-
-    // Start the server
-    const PORT = process.env.PORT || 80;
-    app.listen(PORT, async () => {
-        console.log(`
-Server is running!
-        `);
-
-        // Start blockchain monitoring
-        monitorEthereumTransfers().catch((error) => {
-            console.error('Failed to start monitoring:', error);
-        });
-    });
-}).catch(error => {
-    console.error('Failed to start server:', error);
-});
 
 // Make sure to export the app if you're using it in other files
 module.exports = app;
