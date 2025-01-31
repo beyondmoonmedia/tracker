@@ -15,7 +15,6 @@ const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
 const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
 // Express and Parse Server setup
-const app = Parse.Server.app;
 const config = {
   databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
   appId: process.env.PARSE_APP_ID || 'myAppId',
@@ -405,7 +404,7 @@ const sslOptions = {
 // Get the Express app instance from Parse Server instead of creating a new one
 const app = Parse.Server.app;
 
-// Add the webhook endpoint to the existing Express app
+// Add the webhook endpoint to the existing app
 app.post('/webhook/transactions', express.json(), async (req, res) => {
     try {
         const { event } = req.body;
@@ -467,7 +466,7 @@ app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req
     }
 });
 
-// Create HTTPS server using the existing Express app
+// Create HTTPS server using the existing app
 const sslOptions = {
     key: fs.readFileSync('private.key'),
     cert: fs.readFileSync('certificate.crt'),
