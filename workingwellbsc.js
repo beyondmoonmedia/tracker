@@ -433,7 +433,7 @@ app.use(express.json());
 // Add at the top with other requires
 
 // Add the webhook endpoint
-app.post('/webhook/BSCtransactions', async (req, res) => {
+app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
         // Check if it's an address activity webhook
         if (req.body.type !== 'ADDRESS_ACTIVITY') {

@@ -402,6 +402,7 @@ app.use(express.json());
 // Add the webhook endpoint
 app.post('/webhook/eth/transactions', async (req, res) => {
     try {
+        console.log(req.body);
         // Check if it's an address activity webhook
         if (req.body.type !== 'ADDRESS_ACTIVITY') {
             return res.status(200).json({ message: 'Not an address activity event' });
