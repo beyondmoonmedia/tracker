@@ -1,13 +1,21 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+
 const app = express();
 
-// Specific route for the validation file
+// SSL certificate configuration with local paths
+const sslOptions = {
+  key: fs.readFileSync('private.key'),     // Your private key file
+  cert: fs.readFileSync('certificate.crt'), // Your certificate file
+  ca: fs.readFileSync('ca_bundle.crt')      // Your CA bundle file
+};
+
+// Your existing route
 app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req, res) => {
     const filePath = path.join(__dirname, '.well-known', 'pki-validation', 'CA8A9209D7653245550200FC8EE46EBC.txt');
     
-    // Check if file exists
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
     } else {
@@ -16,15 +24,18 @@ app.get('/.well-known/pki-validation/CA8A9209D7653245550200FC8EE46EBC.txt', (req
     }
 });
 
-// Optional: Add a basic route for the root path
-app.get('/', (req, res) => {
-    res.send('Server is running');
-});
+// Optional: Redirect HTTP to HTTPS
+const http = require('http');
+http.createServer((req, res) => {
+    res.writeHead(301, { "Location": "https://" + req.headers['host'] + req.url });
+    res.end();
+}).listen(80);
 
-// Start the server
-const PORT = process.env.PORT || 80;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    // Log the full path to help with debugging
-    console.log('Looking for file at:', path.join(__dirname, '.well-known', 'pki-validation', 'CA8A9209D7653245550200FC8EE46EBC.txt'));
+// Create HTTPS server
+const httpsServer = https.createServer(sslOptions, app);
+
+// Start the HTTPS server
+const PORT = 443; // Standard HTTPS port
+httpsServer.listen(PORT, () => {
+    console.log(`HTTPS Server running on port ${PORT}`);
 });
