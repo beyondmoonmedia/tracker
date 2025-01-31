@@ -517,12 +517,22 @@ const dashboard = new ParseDashboard({
 }, { allowInsecureHTTP: true });
 
 // Start Parse Server first
-parseServer.start()
-
-// Mount Parse Server and Dashboard
-app.use('/parse', parseServer.app);
-app.use('/dashboard', dashboard);
-app.get('/', (req, res) => res.send('Server is running'));
+parseServer.start().then(() => {
+    console.log('Parse Server started successfully');
+    
+    // Mount Parse Server and Dashboard
+    app.use('/parse', parseServer.app);
+    app.use('/dashboard', dashboard);
+    
+    console.log('Dashboard configured with:');
+    console.log('Username:', 'adminSuper');
+    console.log('Password:', 'strongpass123!@#$ASDSSSS');
+    console.log('Access at: https://your-domain.com/dashboard');
+    
+    app.get('/', (req, res) => res.send('Server is running'));
+}).catch(error => {
+    console.error('Error starting Parse Server:', error);
+});
 
 // Start the server and blockchain tracking
 
