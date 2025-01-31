@@ -656,7 +656,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 blockNumber = txBlock.number;
             }
             
-            if (type === 'BNB') {
+            if (type === 'ETH') {
                 const bnbPrice = await getBNBPrice(blockNumber);
                 // Value is already in BNB from the webhook, no need to format
                 amountInUSD = tx.value * bnbPrice;
