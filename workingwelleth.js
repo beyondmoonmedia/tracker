@@ -8,7 +8,6 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
-const { bnbProvider, getBNBPrice, calculateTokenRewards, getTokenPriceForTimestamp, getBonusForTimestamp } = require('./workingwellbsc');
 
 // Essential constants
 const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE';
@@ -93,7 +92,6 @@ async function getBNBPrice(blockNumber) {
 }
 
 // Add the processTransaction function back
-
 async function processTransaction(type, tx, isHistorical = false, block = null, className) {
     try {
         const fullWalletAddress = tx.to.toLowerCase();
@@ -115,47 +113,24 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         let timestamp;
         let blockNumber;
 
-        if (isHistorical) {
-            if (tx.metadata && tx.metadata.blockTimestamp) {
-                timestamp = new Date(tx.metadata.blockTimestamp);
-            } else if (block) {
-                timestamp = new Date(block.timestamp * 1000);
-            } else {
-                const txBlock = await bnbProvider.getBlock(tx.blockNum);
-                timestamp = new Date(txBlock.timestamp * 1000);
-            }
-            
-            blockNumber = tx.blockNum;
-            
-            if (type === 'BNB') {
-                const bnbPrice = await getBNBPrice(blockNumber);
-                // Value is already in BNB, just multiply by price
-                amountInUSD = tx.value * bnbPrice;
-            } else {
-                amountInUSD = parseFloat(tx.value);
-            }
+        if (block) {
+            timestamp = new Date(block.timestamp * 1000);
+            blockNumber = block.number;
         } else {
-            if (block) {
-                timestamp = new Date(block.timestamp * 1000);
-                blockNumber = block.number;
-            } else {
-                const txBlock = await bnbProvider.getBlock(tx.blockNumber);
-                timestamp = new Date(txBlock.timestamp * 1000);
-                blockNumber = txBlock.number;
-            }
-            
-            if (type === 'ETH') {
-                const bnbPrice = await getBNBPrice(blockNumber);
-                // Value is already in BNB from the webhook, no need to format
-                amountInUSD = tx.value * bnbPrice;
-                console.log(`BNB Amount: ${tx.value} BNB`);
-                console.log(`BNB Price: $${bnbPrice}`);
-                console.log(`USD Amount: $${amountInUSD}`);
-            } else {
-                // Handle other token amounts
-                const value = ethers.formatUnits(tx.value, 6); // Adjust decimals based on token
-                amountInUSD = parseFloat(value);
-            }
+            const txBlock = await bnbProvider.getBlock(tx.blockNumber);
+            timestamp = new Date(txBlock.timestamp * 1000);
+            blockNumber = txBlock.number;
+        }
+        
+        if (type === 'BNB') {
+            const bnbPrice = await getBNBPrice(blockNumber);
+            amountInUSD = tx.value * bnbPrice;
+            console.log(`BNB Amount: ${tx.value} BNB`);
+            console.log(`BNB Price: $${bnbPrice}`);
+            console.log(`USD Amount: $${amountInUSD}`);
+        } else {
+            const value = ethers.formatUnits(tx.value, 6); // Adjust decimals based on token
+            amountInUSD = parseFloat(value);
         }
 
         console.log(`\nProcessing ${type} transaction:`);
@@ -210,6 +185,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         });
     }
 }
+
 // Webhook endpoint
 app.post('/webhook/transactions', async (req, res) => {
     try {
