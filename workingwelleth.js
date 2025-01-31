@@ -502,6 +502,18 @@ const dashboard = new ParseDashboard({
         masterKey: config.masterKey,
         appName: "Blockchain Tracker"
     }],
+    users: [
+        {
+            user: "admin",          // Change this to your desired username
+            pass: "strongpass123"   // Change this to your desired password
+        },
+        // You can add more users if needed:
+        // {
+        //     user: "user2",
+        //     pass: "password2"
+        // }
+    ],
+    useEncryptedPasswords: false  // Set to true in production for better security
 }, { allowInsecureHTTP: true });
 parseServer.start()
 
