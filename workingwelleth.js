@@ -27,6 +27,9 @@ const config = {
     allowClientClassCreation: false,
     allowExpiredAuthDataToken: false,
     cloud: path.join(__dirname, '/cloud/main.js'),
+    liveQuery: {
+        classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH'] // Enable for these classes
+      }
 };
 
 // Initialize Alchemy for Ethereum Mainnet
