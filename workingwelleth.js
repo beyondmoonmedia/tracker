@@ -573,40 +573,39 @@ const sslOptions = {
     ca: fs.readFileSync('ca_bundle.crt')
 };
 
-// Initialize Parse Server
-const parseServer = new ParseServer(config);
-
-const dashboard = new ParseDashboard({
-    apps: [{
-        serverURL: config.serverURL,
-        publicServerURL: config.publicServerURL,
-        appId: config.appId,
-        masterKey: config.masterKey,
-        appName: "Blockchain Tracker"
-    }],
-}, { allowInsecureHTTP: true });
-parseServer.start()
-
-// Mount Parse Server and Dashboard
-app.use('/parse', parseServer.app);
-app.use('/dashboard', dashboard);
-app.get('/', (req, res) => res.send('Server is running'));
-// Start the server and blockchain tracking
-
+// Create both HTTP and HTTPS servers
 const httpsServer = https.createServer(sslOptions, app);
 const HTTPS_PORT = 443;
 
-// Initialize Parse LiveQuery Server
-const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer, {
-    redisURL: process.env.REDIS_URL, // Optional: Redis URL if you want to use Redis
-    websocketTimeout: 60 * 1000, // Optional: timeout in milliseconds
-    idempotency: true, // Optional: ensure each client gets the same results
+// Initialize Parse Server with LiveQuery configuration
+const api = new ParseServer({
+    databaseURI: process.env.MONGODB_URI || 'mongodb+srv://dev:MgyKxSP9JyhzzKrf@cluster0.dydl7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+    appId: process.env.PARSE_APP_ID || 'myAppId',
+    masterKey: process.env.PARSE_MASTER_KEY || 'myMasterKey',
+    serverURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+    publicServerURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+    allowClientClassCreation: false,
+    allowExpiredAuthDataToken: false,
+    cloud: path.join(__dirname, '/cloud/main.js'),
+    liveQuery: {
+        classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH'],
+        redisURL: process.env.REDIS_URL,
+        websocketTimeout: 60 * 1000,
+        idempotency: true,
+    }
 });
 
-// Start HTTPS server with LiveQuery
+// Serve the Parse API on the /parse URL prefix
+app.use('/parse', api);
+
+// Initialize Parse LiveQuery Server AFTER the HTTPS server is created
+const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer);
+
+// Start HTTPS server
 httpsServer.listen(HTTPS_PORT, () => {
     console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
     console.log('LiveQuery server is now running');
+    console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
 });
 
 // Optional: HTTP to HTTPS redirect server
