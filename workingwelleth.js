@@ -590,7 +590,7 @@ const dashboard = new ParseDashboard({
 api.start()
 
 // Mount Parse Server and Dashboard
-app.use('/parse', api);
+app.use('/parse', api.app);
 app.use('/dashboard', dashboard);
 app.get('/', (req, res) => res.send('Server is running'));
 // Start the server and blockchain tracking
