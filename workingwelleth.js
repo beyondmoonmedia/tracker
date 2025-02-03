@@ -570,32 +570,45 @@ const sslOptions = {
     ca: fs.readFileSync('ca_bundle.crt')
 };
 
-// Initialize Parse Server
-const parseServer = new ParseServer(config);
+// Initialize Parse Server with LiveQuery configuration
+const api = new ParseServer({
+    databaseURI: process.env.MONGODB_URI || 'mongodb+srv://dev:MgyKxSP9JyhzzKrf@cluster0.dydl7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+    appId: process.env.PARSE_APP_ID || 'myAppId',
+    masterKey: process.env.PARSE_MASTER_KEY || 'myMasterKey',
+    serverURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+    publicServerURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+    allowClientClassCreation: false,
+    allowExpiredAuthDataToken: false,
+    cloud: path.join(__dirname, '/cloud/main.js'),
+    liveQuery: {
+        classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']
+    }
+});
 
-const dashboard = new ParseDashboard({
-    apps: [{
-        serverURL: config.serverURL,
-        publicServerURL: config.publicServerURL,
-        appId: config.appId,
-        masterKey: config.masterKey,
-        appName: "Blockchain Tracker"
-    }],
-}, { allowInsecureHTTP: true });
-parseServer.start()
+// Serve the Parse API on the /parse URL prefix
+app.use('/parse', api);
 
-// Mount Parse Server and Dashboard
-app.use('/parse', parseServer.app);
-app.use('/dashboard', dashboard);
-app.get('/', (req, res) => res.send('Server is running'));
-// Start the server and blockchain tracking
+// Add WebSocket endpoint
+app.use('/ws', (req, res) => {
+    res.status(200).send('WebSocket endpoint');
+});
 
-const httpsServer = https.createServer(sslOptions, app);
-const HTTPS_PORT = 443;
+// Initialize Parse LiveQuery Server with explicit configuration
+const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer, {
+    appId: process.env.PARSE_APP_ID || 'myAppId',
+    masterKey: process.env.PARSE_MASTER_KEY || 'myMasterKey',
+    serverURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+    websocketTimeout: 60 * 1000,
+    keyPairs: {
+        "myAppId": process.env.PARSE_MASTER_KEY || 'myMasterKey'
+    }
+});
 
 // Start HTTPS server
 httpsServer.listen(HTTPS_PORT, () => {
     console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+    console.log('LiveQuery server is now running at wss://64.227.103.227/ws');
+    console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
 });
 
 // Optional: HTTP to HTTPS redirect server
