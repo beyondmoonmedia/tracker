@@ -28,8 +28,11 @@ const config = {
     allowExpiredAuthDataToken: false,
     cloud: path.join(__dirname, '/cloud/main.js'),
     liveQuery: {
-        classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH'] // Enable for these classes
-      }
+        classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH'], // Enable for these classes
+        redisURL: process.env.REDIS_URL, // Optional: Redis URL if you want to use Redis
+        websocketTimeout: 60 * 1000, // Optional: timeout in milliseconds
+        idempotency: true, // Optional: ensure each client gets the same results
+    }
 };
 
 // Initialize Alchemy for Ethereum Mainnet
@@ -593,9 +596,17 @@ app.get('/', (req, res) => res.send('Server is running'));
 const httpsServer = https.createServer(sslOptions, app);
 const HTTPS_PORT = 443;
 
-// Start HTTPS server
+// Initialize Parse LiveQuery Server
+const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer, {
+    redisURL: process.env.REDIS_URL, // Optional: Redis URL if you want to use Redis
+    websocketTimeout: 60 * 1000, // Optional: timeout in milliseconds
+    idempotency: true, // Optional: ensure each client gets the same results
+});
+
+// Start HTTPS server with LiveQuery
 httpsServer.listen(HTTPS_PORT, () => {
     console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+    console.log('LiveQuery server is now running');
 });
 
 // Optional: HTTP to HTTPS redirect server
@@ -751,7 +762,14 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 walletAddress: fullWalletAddress
             };
 
-            await transaction.save(data, { useMasterKey: true });
+            // Save the transaction and trigger LiveQuery update
+            const savedTransaction = await transaction.save(data, { useMasterKey: true });
+            
+            // Manually trigger LiveQuery update if needed
+            Parse.Query.fromJSON(className, {
+                where: { objectId: savedTransaction.id }
+            }).find({ useMasterKey: true });
+
             console.log(`Transaction saved successfully: ${tx.hash}`);
         }
     } catch (error) {
