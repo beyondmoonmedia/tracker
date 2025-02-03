@@ -589,9 +589,7 @@ const api = new ParseServer({
     cloud: path.join(__dirname, '/cloud/main.js'),
     liveQuery: {
         classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH'],
-        redisURL: process.env.REDIS_URL,
-        websocketTimeout: 60 * 1000,
-        idempotency: true,
+        redisURL: process.env.REDIS_URL
     }
 });
 
