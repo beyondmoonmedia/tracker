@@ -598,6 +598,12 @@ app.get('/', (req, res) => res.send('Server is running'));
 const httpsServer = https.createServer(sslOptions, app);
 const HTTPS_PORT = 443;
 
+// Start HTTPS server
+httpsServer.listen(HTTPS_PORT, () => {
+    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+    console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
+});
+
 // Initialize Parse LiveQuery Server
 const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer);
 
@@ -615,13 +621,6 @@ if (parseLiveQueryServer.server) {
         });
     });
 }
-
-// Start HTTPS server
-httpsServer.listen(HTTPS_PORT, () => {
-    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
-    console.log('LiveQuery server is running');
-    console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
-});
 
 // Optional: HTTP to HTTPS redirect server
 http.createServer((req, res) => {
