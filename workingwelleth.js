@@ -29,11 +29,6 @@ const config = {
     cloud: path.join(__dirname, '/cloud/main.js'),
     liveQuery: {
         classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']
-    },
-    startLiveQueryServer: true,
-    liveQueryServerOptions: {
-        port: 443,
-        websocketTimeout: 60 * 1000
     }
 };
 
