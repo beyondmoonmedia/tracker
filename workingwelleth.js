@@ -32,7 +32,7 @@ const config = {
     },
     startLiveQueryServer: true,
     liveQueryServerOptions: {
-        port: 1337,
+        port: 443,
         websocketTimeout: 60 * 1000
     }
 };
