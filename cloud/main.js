@@ -3,10 +3,8 @@ const Parse = require('parse-server/lib/cloud-code/Parse.Cloud');
 const path = require('path');
 const { io } = require('../workingwelleth'); // Adjust the path as necessary
 
-// Import tracker functions
-const trackerServer = require('../trackerserver');
 
-console.log('Loading cloud functions...');
+console.log('Loading cloud functions2...');
 Parse.afterSave('Transaction_e2f90a_BSC', (request) => {
     const object = request.object;
 
