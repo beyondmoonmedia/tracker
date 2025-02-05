@@ -30,7 +30,8 @@ const config = {
     cloud: path.join(__dirname, '/cloud/main.js'),
     liveQuery: {
         classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']
-    }
+    },
+    allowOrigin: '*'
 };
 
 // Initialize Alchemy for Ethereum Mainnet
