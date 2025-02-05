@@ -772,7 +772,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             const transaction = new Transaction();
             const data = {
                 contributor: tx.from.toLowerCase(),
-                tokenType: type,
+                tokenType: networks,
                 txHash: tx.hash,
                 blockNumber: blockNumber.toString(),
                 timestamp: timestamp,
