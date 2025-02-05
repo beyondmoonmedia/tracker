@@ -612,6 +612,8 @@ const io = socketIo(httpsServer, {
 
 
 // Socket.IO connection
+// Export the io instance for use in Cloud Code
+module.exports = { io };
 io.on('connection', (socket) => {
     console.log('A user connected');
 
