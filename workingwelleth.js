@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const socketIo = require('socket.io');
 
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
@@ -599,6 +600,17 @@ httpsServer.listen(HTTPS_PORT, () => {
     console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
 });
 
+const io = socketIo(httpsServer);
+
+// Socket.IO connection
+io.on('connection', (socket) => {
+    console.log('A user connected');
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        console.log('User disconnected');
+    });
+});
 // Initialize Parse LiveQuery Server
 const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer);
 
@@ -606,7 +618,7 @@ const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer);
 if (parseLiveQueryServer.server) {
     parseLiveQueryServer.server.on('connection', (ws) => {
         console.log('New LiveQuery connection established');
-        
+
         ws.on('close', () => {
             console.log('LiveQuery connection closed');
         });

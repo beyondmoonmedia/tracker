@@ -6,6 +6,15 @@ const path = require('path');
 const trackerServer = require('../trackerserver');
 
 console.log('Loading cloud functions...');
+Parse.afterSave('Transaction_e2f90a_BSC', (request) => {
+    const object = request.object;
+
+    // Emit an event to notify clients
+    io.emit('newObjectCreated', {
+        id: object.id,
+        data: object.toJSON(),
+    });
+});
 
 Parse.define('getSchemas', async (request) => {
     if (!request.master) {
@@ -37,65 +46,5 @@ Parse.define('getSchemas', async (request) => {
     }
 });
 
-// Setup Wallet Function
-Parse.define('setupWalletTracking', async (request) => {
-    try {
-        const { walletAddress, network, initialPrice, initialBonus, startDate, endDate } = request.params;
-        
-        const result = await trackerServer.setupWalletTracking(
-            walletAddress,
-            network,
-            initialPrice,
-            initialBonus,
-            startDate,
-            endDate
-        );
-        
-        return { success: true, result };
-    } catch (error) {
-        console.error('Error in setupWalletTracking:', error);
-        throw error;
-    }
-});
-
-// Update Price Function
-Parse.define('updatePrice', async (request) => {
-    try {
-        const { walletAddress, newPrice, startDate, endDate } = request.params;
-        console.log('Updating price for:', walletAddress);
-        
-        const result = await trackerServer.updatePrice(
-            walletAddress,
-            newPrice,
-            startDate,
-            endDate
-        );
-        
-        return { success: true, result };
-    } catch (error) {
-        console.error('Error in updatePrice:', error);
-        throw error;
-    }
-});
-
-// Update Bonus Function
-Parse.define('updateBonus', async (request) => {
-    try {
-        const { walletAddress, newBonus, startDate, endDate } = request.params;
-        console.log('Updating bonus for:', walletAddress);
-        
-        const result = await trackerServer.updateBonus(
-            walletAddress,
-            newBonus,
-            startDate,
-            endDate
-        );
-        
-        return { success: true, result };
-    } catch (error) {
-        console.error('Error in updateBonus:', error);
-        throw error;
-    }
-});
 
 console.log('Cloud functions loaded successfully'); 
