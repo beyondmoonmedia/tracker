@@ -601,7 +601,15 @@ httpsServer.listen(HTTPS_PORT, () => {
     console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
 });
 
-const io = socketIo(httpsServer);
+const io = socketIo(httpsServer, {
+    cors: {
+        origin: "http://localhost:3000", // Allow your React app's origin
+        methods: ["GET", "POST"],
+        allowedHeaders: ["my-custom-header"],
+        credentials: true
+    }
+});
+
 
 // Socket.IO connection
 io.on('connection', (socket) => {
