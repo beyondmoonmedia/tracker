@@ -776,6 +776,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
             console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
 
+            console.log(`amountInUSD: ${amountInUSD}`);
+
             const transaction = new Transaction();
             if (type === "USDT")
                 networks = "USDT"
