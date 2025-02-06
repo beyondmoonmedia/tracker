@@ -731,24 +731,27 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             blockNumber = txBlock.number;
         }
         if (networks === 'ETH') {
-            const ethPrice = await getETHPrice(blockNumber);
-            // Value is already in ETH from the webhook, no need to format
-            amountInUSD = tx.value * ethPrice;
-            console.log(`ETH Amount: ${tx.value} ETH`);
-            console.log(`ETH Price: $${ethPrice}`);
-            console.log(`USD Amount: $${amountInUSD}`);
+            if (type === "USDT")
+                amountInUSD = tx.value;
+            else {
+                const ethPrice = await getETHPrice(blockNumber);
+                amountInUSD = tx.value * ethPrice;
+                console.log(`ETH Amount: ${tx.value} ETH`);
+                console.log(`ETH Price: $${ethPrice}`);
+                console.log(`USD Amount: $${amountInUSD}`);
+            }
         } else if (networks === 'BNB') {
-            const bnbPrice = await getBNBPrice(blockNumber);
-            // Value is already in ETH from the webhook, no need to format
-            amountInUSD = tx.value * bnbPrice;
-            console.log(`BNB Amount: ${tx.value} BNB`);
-            console.log(`BNB Price: $${bnbPrice}`);
-            console.log(`USD Amount: $${amountInUSD}`);
 
-        } else {
-            // Handle other token amounts
-            const value = ethers.formatUnits(tx.value, 6); // Adjust decimals based on token
-            amountInUSD = parseFloat(value);
+            if (type === "USDT")
+                amountInUSD = tx.value;
+            else {
+                const bnbPrice = await getBNBPrice(blockNumber);
+                // Value is already in ETH from the webhook, no need to format
+                amountInUSD = tx.value * bnbPrice;
+                console.log(`BNB Amount: ${tx.value} BNB`);
+                console.log(`BNB Price: $${bnbPrice}`);
+                console.log(`USD Amount: $${amountInUSD}`);
+            }
         }
 
         console.log(`\nProcessing ${type} transaction:`);
@@ -773,6 +776,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
 
             const transaction = new Transaction();
+            if (type === "USDT")
+                networks = "USDT"
             const data = {
                 contributor: tx.from.toLowerCase(),
                 tokenType: networks,
