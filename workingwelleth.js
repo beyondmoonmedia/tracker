@@ -704,6 +704,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
     try {
         const fullWalletAddress = tx.to.toLowerCase();
         console.log("Processing transaction for", fullWalletAddress);
+        console.log("Processing transaction for", type);
 
         // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
