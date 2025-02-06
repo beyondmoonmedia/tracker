@@ -733,18 +733,19 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         }
         if (networks === 'ETH') {
             if (type === "USDT")
-                amountInUSD = tx.value;
+                amountInUSD = Number(tx.value);
             else {
                 const ethPrice = await getETHPrice(blockNumber);
                 amountInUSD = tx.value * ethPrice;
                 console.log(`ETH Amount: ${tx.value} ETH`);
                 console.log(`ETH Price: $${ethPrice}`);
                 console.log(`USD Amount: $${amountInUSD}`);
+
             }
         } else if (networks === 'BNB') {
 
             if (type === "USDT")
-                amountInUSD = tx.value;
+                amountInUSD = Number(tx.value);
             else {
                 const bnbPrice = await getBNBPrice(blockNumber);
                 // Value is already in ETH from the webhook, no need to format
