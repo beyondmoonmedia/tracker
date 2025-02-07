@@ -440,6 +440,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
             return res.status(200).json({ message: 'Not an address activity event' });
         }
 
+        console.log(req.body.event)
         const activities = req.body.event.activity;
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
