@@ -432,6 +432,33 @@ app.use(express.json());
 
 // Add at the top with other requires
 
+// Function to get transaction details
+async function getTransactionDetails(txHash) {
+    try {
+        const tx = await provider.getTransaction(txHash);
+        if (!tx) {
+            console.log('Transaction not found');
+            return;
+        }
+
+        console.log('Transaction Details:', tx);
+
+        // If it's a token transfer, decode the input data
+        if (tx.data && tx.to) {
+            const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
+            try {
+                const decodedData = iface.decodeFunctionData('transfer', tx.data);
+                console.log('Decoded Transfer Data:', decodedData);
+            } catch (error) {
+                console.error('Error decoding transaction data:', error);
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching transaction details:', error);
+    }
+}
+
+
 app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
         console.log(req.body)
@@ -449,6 +476,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         console.log(req.body.event.activity[0].asset)
         console.log(req.body.event.activity[0])
         console.log(req.body.event.activity[0].value)
+        getTransactionDetails(req.body.event.activity[0].hash)
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
