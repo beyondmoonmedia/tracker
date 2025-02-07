@@ -489,10 +489,13 @@ async function getTransactionDetails(txHash) {
 
 app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
+        console.log(req.body)
         // Check if it's an address activity webhook
         if (req.body.type !== 'ADDRESS_ACTIVITY') {
             return res.status(200).json({ message: 'Not an address activity event' });
         }
+        console.log(req.body.event.activity)
+        console.log(req.body.event.activity[0].hash)
 
         const activities = req.body.event.activity;
         if (!Array.isArray(activities)) {
