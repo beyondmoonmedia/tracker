@@ -454,11 +454,8 @@ async function getTransactionDetails(txHash) {
             if (!receipt) {
                 console.log('Transaction not found, checking again...');
             } else {
-                console.log('Transaction Receipt:', receipt);
 
-                // If the transaction is confirmed, fetch the transaction details
                 const tx = await bnbProvider.getTransaction(txHash);
-                console.log('Transaction Details:', tx);
 
                 // If it's a token transfer, decode the input data
                 if (tx.data && tx.to) {
@@ -470,22 +467,20 @@ async function getTransactionDetails(txHash) {
 
                     try {
                         const decodedData = tokenInterface.decodeFunctionData('transfer', tx.data);
-                        
+
                         // Get token decimals
                         const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
                         const decimals = await tokenContract.decimals();
-                        
+
                         // Format the value using the decimals
                         const formattedValue = ethers.formatUnits(decodedData.value, decimals);
-                        
+
                         console.log('Decoded Transfer Data:', {
                             to: decodedData.to,
                             value: formattedValue
                         });
-                        return {
-                            to: decodedData.to,
-                            value: formattedValue
-                        }
+                        clearInterval(polling); // Stop polling if transaction is found
+                        return formattedValue
                     } catch (error) {
                         console.error('Error decoding transaction data:', error);
                     }
@@ -550,9 +545,9 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                     console.log(req.body.event.activity[0])
                     console.log(req.body.event.activity[0].hash)
                     console.log("--------------HASH------------")
-                    let dat = getTransactionDetails(req.body.event.activity[0].hash)
+                    let dat = await getTransactionDetails(req.body.event.activity[0].hash)
                     console.log(dat)
-            
+
                     // const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
                     // console.log("--------------RES------------")
                     // console.log(response)
