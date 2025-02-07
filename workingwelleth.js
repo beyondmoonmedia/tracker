@@ -441,6 +441,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         }
 
         console.log(req.body.event)
+        console.log(req.body.event.eventDetails)
         const activities = req.body.event.activity;
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
