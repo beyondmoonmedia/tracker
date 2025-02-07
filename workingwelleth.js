@@ -450,14 +450,14 @@ async function getTransactionDetails(txHash) {
     const checkTransaction = async () => {
         try {
             // Check for the transaction receipt
-            const receipt = await provider.getTransactionReceipt(txHash);
+            const receipt = await bnbProvider.getTransactionReceipt(txHash);
             if (!receipt) {
                 console.log('Transaction not found, checking again...');
             } else {
                 console.log('Transaction Receipt:', receipt);
 
                 // If the transaction is confirmed, fetch the transaction details
-                const tx = await provider.getTransaction(txHash);
+                const tx = await bnbProvider.getTransaction(txHash);
                 console.log('Transaction Details:', tx);
 
                 // If it's a token transfer, decode the input data
@@ -501,10 +501,11 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         }
         console.log(req.body.event.activity[0].hash)
         console.log("--------------HASH------------")
-        const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
-        console.log("--------------RES------------")
-        console.log(response)
-        const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
+        getTransactionDetails(req.body.event.activity[0].hash)
+        // const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
+        // console.log("--------------RES------------")
+        // console.log(response)
+        // const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
         console.log(response2)
         console.log("--------------END------------")
         // // Get all active wallets
