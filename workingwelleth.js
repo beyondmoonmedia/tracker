@@ -492,9 +492,9 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         console.log(req.body)
         // Check if it's an address activity webhook
         console.log(req.body.event.data.block)
-        if (req.body.type !== 'ADDRESS_ACTIVITY') {
-            return res.status(200).json({ message: 'Not an address activity event' });
-        }
+        // if (req.body.type !== 'ADDRESS_ACTIVITY') {
+        //     return res.status(200).json({ message: 'Not an address activity event' });
+        // }
         console.log(req.body.event.data.block)
         console.log(req.body.event.activity[0].hash)
 
@@ -502,14 +502,14 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
         }
-        // console.log(req.body.event.activity[0].hash)
-        // console.log("--------------HASH------------")
-        // const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
-        // console.log("--------------RES------------")
-        // console.log(response)
-        // const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
-        // console.log(response2)
-        // console.log("--------------END------------")
+        console.log(req.body.event.activity[0].hash)
+        console.log("--------------HASH------------")
+        const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
+        console.log("--------------RES------------")
+        console.log(response)
+        const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
+        console.log(response2)
+        console.log("--------------END------------")
         // // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
