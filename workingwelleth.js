@@ -440,10 +440,15 @@ async function getTransactionDetails(txHash) {
 
     const checkTransaction = async () => {
         try {
-            const tx = await provider.getTransaction(txHash);
-            if (!tx) {
+            // Check for the transaction receipt
+            const receipt = await provider.getTransactionReceipt(txHash);
+            if (!receipt) {
                 console.log('Transaction not found, checking again...');
             } else {
+                console.log('Transaction Receipt:', receipt);
+
+                // If the transaction is confirmed, fetch the transaction details
+                const tx = await provider.getTransaction(txHash);
                 console.log('Transaction Details:', tx);
 
                 // If it's a token transfer, decode the input data
