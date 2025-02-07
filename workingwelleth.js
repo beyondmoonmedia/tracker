@@ -434,30 +434,42 @@ app.use(express.json());
 
 // Function to get transaction details
 async function getTransactionDetails(txHash) {
-    try {
-        const tx = await provider.getTransaction(txHash);
-        if (!tx) {
-            console.log('Transaction not found');
-            return;
-        }
+    const interval = 5000; // 5 seconds
+    let attempts = 0;
+    const maxAttempts = 10; // Maximum number of attempts (optional)
 
-        console.log(txHash)
+    const checkTransaction = async () => {
+        try {
+            const tx = await provider.getTransaction(txHash);
+            if (!tx) {
+                console.log('Transaction not found, checking again...');
+            } else {
+                console.log('Transaction Details:', tx);
 
-        console.log('Transaction Details:', tx);
-
-        // If it's a token transfer, decode the input data
-        if (tx.data && tx.to) {
-            const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
-            try {
-                const decodedData = iface.decodeFunctionData('transfer', tx.data);
-                console.log('Decoded Transfer Data:', decodedData);
-            } catch (error) {
-                console.error('Error decoding transaction data:', error);
+                // If it's a token transfer, decode the input data
+                if (tx.data && tx.to) {
+                    const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
+                    try {
+                        const decodedData = iface.decodeFunctionData('transfer', tx.data);
+                        console.log('Decoded Transfer Data:', decodedData);
+                    } catch (error) {
+                        console.error('Error decoding transaction data:', error);
+                    }
+                }
+                clearInterval(polling); // Stop polling if transaction is found
             }
+        } catch (error) {
+            console.error('Error fetching transaction details:', error);
         }
-    } catch (error) {
-        console.error('Error fetching transaction details:', error);
-    }
+
+        attempts++;
+        if (attempts >= maxAttempts) {
+            clearInterval(polling); // Stop polling after max attempts
+            console.log('Max attempts reached. Stopping polling.');
+        }
+    };
+
+    const polling = setInterval(checkTransaction, interval);
 }
 
 
