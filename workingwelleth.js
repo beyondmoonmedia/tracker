@@ -504,12 +504,12 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         }
         console.log(req.body.event.activity[0].hash)
         console.log(req.body.event.activity[0])
-        console.log("--------------------------")
+        console.log("--------------HASH------------")
 
         const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
 
         //Logging the response to the console
-        console.log(response)
+        console.log(response,response)
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
