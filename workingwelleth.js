@@ -515,9 +515,9 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
         console.log(req.body)
         // Check if it's an address activity webhook
-        // if (req.body.type !== 'ADDRESS_ACTIVITY') {
-        //     return res.status(200).json({ message: 'Not an address activity event' });
-        // }
+        if (req.body.type !== 'ADDRESS_ACTIVITY') {
+            return res.status(200).json({ message: 'Not an address activity event' });
+        }
 
         const activities = req.body.event.activity;
         if (!Array.isArray(activities)) {
@@ -541,72 +541,82 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                 const trackedAddress = walletAddress.toLowerCase();
                 if (toAddress === trackedAddress && req.body.event.network === networks) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
+                    if (activity.category === "token") {
+                        const tx = await bnbProvider.getTransaction(activity.hash);
 
-                    console.log(req.body.event.activity[0])
-                    console.log(req.body.event.activity[0].hash)
-                    console.log("--------------HASH------------")
-                    let dat = 0;
-                    const tx = await bnbProvider.getTransaction(req.body.event.activity[0].hash);
+                        // If it's a token transfer, decode the input data
+                        if (tx.data && tx.to) {
+                            // Add ERC20/BEP20 standard interface for decimals
+                            const tokenInterface = new ethers.Interface([
+                                'function transfer(address to, uint256 value)',
+                                'function decimals() view returns (uint8)'
+                            ]);
 
-                    // If it's a token transfer, decode the input data
-                    if (tx.data && tx.to) {
-                        // Add ERC20/BEP20 standard interface for decimals
-                        const tokenInterface = new ethers.Interface([
-                            'function transfer(address to, uint256 value)',
-                            'function decimals() view returns (uint8)'
-                        ]);
+                            try {
+                                const decodedData = tokenInterface.decodeFunctionData('transfer', tx.data);
 
-                        try {
-                            const decodedData = tokenInterface.decodeFunctionData('transfer', tx.data);
+                                // Get token decimals
+                                const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
+                                const decimals = await tokenContract.decimals();
 
-                            // Get token decimals
-                            const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
-                            const decimals = await tokenContract.decimals();
+                                // Format the value using the decimals
+                                const formattedValue = ethers.formatUnits(decodedData.value, decimals);
 
-                            // Format the value using the decimals
-                            const formattedValue = ethers.formatUnits(decodedData.value, decimals);
-                            dat = formattedValue
+                                try {
+                                    // Create transaction object
+                                    const tx = {
+                                        hash: activity.hash,
+                                        from: activity.fromAddress,
+                                        to: activity.toAddress,
+                                        value: formattedValue.toString(),
+                                        blockNumber: parseInt(activity.blockNum, 16),
+                                    };
 
-                            console.log('Decoded Transfer Data:', {
-                                value: formattedValue
-                            });
-                            clearInterval(polling); // Stop polling if transaction is found
-                            return formattedValue
-                        } catch (error) {
-                            console.error('Error decoding transaction data:', error);
+                                    // Get block information using BNB provider
+                                    const receipt = await bnbProvider.waitForTransaction(activity.hash);
+
+                                    const block = await bnbProvider.getBlock(receipt.blockNumber);
+
+                                    // Process the transaction
+                                    console.log(className)
+                                    await processTransaction("USDT", tx, false, block, className, "BNB");
+                                    console.log('Transaction processed successfully');
+                                } catch (error) {
+                                    console.error('Error processing individual transaction:', error);
+                                    // Continue with next transaction instead of failing the whole webhook
+                                    continue;
+                                }
+
+                            } catch (error) {
+                                console.error('Error decoding transaction data:', error);
+                            }
                         }
                     }
+                    else {
+                        try {
+                            // Create transaction object
+                            const tx = {
+                                hash: activity.hash,
+                                from: activity.fromAddress,
+                                to: activity.toAddress,
+                                value: activity.value.toString(),
+                                blockNumber: parseInt(activity.blockNum, 16),
+                            };
 
-                    // const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
-                    // console.log("--------------RES------------")
-                    // console.log(response)
-                    // const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
-                    console.log("--------------END------------")
-                    if(dat)
-                        console.log(dat)
-                    try {
-                        // Create transaction object
-                        const tx = {
-                            hash: activity.hash,
-                            from: activity.fromAddress,
-                            to: activity.toAddress,
-                            value: activity.value.toString(),
-                            blockNumber: parseInt(activity.blockNum, 16),
-                        };
+                            // Get block information using BNB provider
+                            const receipt = await bnbProvider.waitForTransaction(activity.hash);
 
-                        // Get block information using BNB provider
-                        const receipt = await bnbProvider.waitForTransaction(activity.hash);
+                            const block = await bnbProvider.getBlock(receipt.blockNumber);
 
-                        const block = await bnbProvider.getBlock(receipt.blockNumber);
-
-                        // Process the transaction
-                        console.log(className)
-                        await processTransaction(activity.asset, tx, false, block, className, "BNB");
-                        console.log('Transaction processed successfully');
-                    } catch (error) {
-                        console.error('Error processing individual transaction:', error);
-                        // Continue with next transaction instead of failing the whole webhook
-                        continue;
+                            // Process the transaction
+                            console.log(className)
+                            await processTransaction(activity.asset, tx, false, block, className, "BNB");
+                            console.log('Transaction processed successfully');
+                        } catch (error) {
+                            console.error('Error processing individual transaction:', error);
+                            // Continue with next transaction instead of failing the whole webhook
+                            continue;
+                        }
                     }
                 }
             }
