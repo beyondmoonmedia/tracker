@@ -565,6 +565,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
 
                             // Format the value using the decimals
                             const formattedValue = ethers.formatUnits(decodedData.value, decimals);
+                            dat = formattedValue
 
                             console.log('Decoded Transfer Data:', {
                                 value: formattedValue
