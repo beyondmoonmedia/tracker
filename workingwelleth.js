@@ -506,7 +506,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         console.log(req.body.event.activity[0])
         console.log("--------------------------")
 
-        const response = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
+        const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
 
         //Logging the response to the console
         console.log(response)
