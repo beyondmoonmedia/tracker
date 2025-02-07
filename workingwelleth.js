@@ -441,6 +441,8 @@ async function getTransactionDetails(txHash) {
             return;
         }
 
+        console.log(txHash)
+
         console.log('Transaction Details:', tx);
 
         // If it's a token transfer, decode the input data
