@@ -42,6 +42,15 @@ const alchemy = new Alchemy({
 });
 exports.alchemy = alchemy;
 
+// Initialize Alchemy for Ethereum Mainnet
+const bscalchemy = new Alchemy({
+    apiKey: process.env.ALCHEMY_API_KEY,
+    network: Network.BNB_MAINNET,
+    maxRetries: 10
+});
+exports.bscalchemy = bscalchemy;
+
+
 // Add this after alchemy initialization
 const provider = new ethers.JsonRpcProvider(`https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`);
 exports.provider = provider;
@@ -496,7 +505,11 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         console.log(req.body.event.activity[0].hash)
         console.log(req.body.event.activity[0])
         console.log("--------------------------")
-        getTransactionDetails(req.body.event.activity[0].hash)
+
+        const response = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
+
+        //Logging the response to the console
+        console.log(response)
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
