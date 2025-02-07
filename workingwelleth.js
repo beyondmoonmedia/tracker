@@ -462,13 +462,40 @@ async function getTransactionDetails(txHash) {
 
                 // If it's a token transfer, decode the input data
                 if (tx.data && tx.to) {
-                    const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
+                    // Add ERC20/BEP20 standard interface for decimals
+                    const tokenInterface = new ethers.Interface([
+                        'function transfer(address to, uint256 value)',
+                        'function decimals() view returns (uint8)'
+                    ]);
+
                     try {
-                        const decodedData = iface.decodeFunctionData('transfer', tx.data);
-                        console.log('Decoded Transfer Data:', decodedData);
+                        const decodedData = tokenInterface.decodeFunctionData('transfer', tx.data);
+                        
+                        // Get token decimals
+                        const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
+                        const decimals = await tokenContract.decimals();
+                        
+                        // Format the value using the decimals
+                        const formattedValue = ethers.formatUnits(decodedData.value, decimals);
+                        
+                        console.log('Decoded Transfer Data:', {
+                            to: decodedData.to,
+                            value: formattedValue,
+                            decimals: decimals,
+                            rawValue: decodedData.value.toString()
+                        });
                     } catch (error) {
                         console.error('Error decoding transaction data:', error);
                     }
+                } else {
+                    // If it's a native token transfer (BNB)
+                    const formattedValue = ethers.formatEther(tx.value);
+                    console.log('Native Token Transfer:', {
+                        from: tx.from,
+                        to: tx.to,
+                        value: formattedValue,
+                        rawValue: tx.value.toString()
+                    });
                 }
                 clearInterval(polling); // Stop polling if transaction is found
             }
@@ -506,7 +533,6 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         // console.log("--------------RES------------")
         // console.log(response)
         // const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
-        console.log(response2)
         console.log("--------------END------------")
         // // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
