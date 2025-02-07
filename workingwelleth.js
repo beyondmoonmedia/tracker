@@ -480,10 +480,12 @@ async function getTransactionDetails(txHash) {
                         
                         console.log('Decoded Transfer Data:', {
                             to: decodedData.to,
-                            value: formattedValue,
-                            decimals: decimals,
-                            rawValue: decodedData.value.toString()
+                            value: formattedValue
                         });
+                        return {
+                            to: decodedData.to,
+                            value: formattedValue
+                        }
                     } catch (error) {
                         console.error('Error decoding transaction data:', error);
                     }
@@ -526,14 +528,6 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
         }
-        console.log(req.body.event.activity[0].hash)
-        console.log("--------------HASH------------")
-        getTransactionDetails(req.body.event.activity[0].hash)
-        // const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
-        // console.log("--------------RES------------")
-        // console.log(response)
-        // const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
-        console.log("--------------END------------")
         // // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
@@ -553,6 +547,17 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                 if (toAddress === trackedAddress && req.body.event.network === networks) {
                     console.log(`\nNew ${activity.asset} transaction detected for ${walletAddress}`);
 
+                    console.log(req.body.event.activity[0])
+                    console.log(req.body.event.activity[0].hash)
+                    console.log("--------------HASH------------")
+                    let dat = getTransactionDetails(req.body.event.activity[0].hash)
+                    console.log(dat)
+            
+                    // const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
+                    // console.log("--------------RES------------")
+                    // console.log(response)
+                    // const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
+                    console.log("--------------END------------")
                     try {
                         // Create transaction object
                         const tx = {
