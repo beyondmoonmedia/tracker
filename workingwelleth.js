@@ -471,6 +471,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
 
         console.log(req.body.event)
         console.log(req.body.event.eventDetails)
+        console.log("--------------------------")
         const activities = req.body.event.activity;
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
@@ -478,6 +479,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
         console.log(req.body.event.activity[0].asset)
         console.log(req.body.event.activity[0])
         console.log(req.body.event.activity[0].value)
+        console.log("--------------------------")
         getTransactionDetails(req.body.event.activity[0].hash)
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
