@@ -546,7 +546,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                     console.log(req.body.event.activity[0].hash)
                     console.log("--------------HASH------------")
                     let dat = 0;
-                    const tx = await bnbProvider.getTransaction(txHash);
+                    const tx = await bnbProvider.getTransaction(req.body.event.activity[0].hash);
 
                     // If it's a token transfer, decode the input data
                     if (tx.data && tx.to) {
