@@ -495,25 +495,25 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
             return res.status(200).json({ message: 'Not an address activity event' });
         }
 
-        console.log(req.body.event)
-        console.log(req.body.event.eventDetails)
-        console.log("--------------------------")
         const activities = req.body.event.activity;
         if (!Array.isArray(activities)) {
             return res.status(200).json({ message: 'No activities to process' });
         }
         console.log(req.body.event.activity[0].hash)
-        console.log(req.body.event.activity[0])
         console.log("--------------HASH------------")
 
         const response = await bscalchemy.transact.waitForTransaction(req.body.event.activity[0].hash)
+        console.log("--------------RES------------")
 
         //Logging the response to the console
         console.log(response,response)
+        const response2 = await bscalchemy.transact.getTransaction(req.body.event.activity[0].hash)
+        console.log(response2,response2)
         // Get all active wallets
         const WalletConfig = Parse.Object.extend("WalletConfig");
         const query = new Parse.Query(WalletConfig);
         query.equalTo("isActive", true);
+
         const activeWallets = await query.find({ useMasterKey: true });
         // Process each activity
         for (const activity of activities) {
