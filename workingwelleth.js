@@ -138,7 +138,7 @@ async function setupWalletConfig(walletAddress, network) {
     let config = await query.first({ useMasterKey: true });
     let net = network;
     if (net === "BSC")
-        net === "BNB_MAINNET"
+        net = "BNB_MAINNET"
     else
         net = "ETH_MAINNET"
     if (!config) {
