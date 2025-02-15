@@ -132,15 +132,17 @@ async function setupWalletConfig(walletAddress, network) {
     // Create a unique class name for this wallet
     const walletClassName = `Transaction_${walletAddress.substring(2, 8)}_${network}`;
 
-    // Check if wallet config exists
-    const query = new Parse.Query(WalletConfig);
-    query.equalTo("walletAddress", walletAddress.toLowerCase());
-    let config = await query.first({ useMasterKey: true });
     let net = network;
     if (net === "BSC")
         net = "BNB_MAINNET"
     else
         net = "ETH_MAINNET"
+    // Check if wallet config exists
+    const query = new Parse.Query(WalletConfig);
+    query.equalTo("walletAddress", walletAddress.toLowerCase());
+    query.equalTo("network", net);
+    let config = await query.first({ useMasterKey: true });
+    console.log(walletClassName)
     if (!config) {
         // Create new wallet config
         config = new WalletConfig();
