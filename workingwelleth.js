@@ -10,6 +10,7 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const socketIo = require('socket.io');
+const cors = require('cors');
 
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
@@ -439,6 +440,12 @@ const app = express();
 // Add body-parser middleware
 app.use(express.json());
 
+// Enable CORS for all routes
+app.use(cors({
+    origin: 'http://localhost:3000', // Replace with your frontend's URL
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
 
 app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
