@@ -439,77 +439,6 @@ const app = express();
 // Add body-parser middleware
 app.use(express.json());
 
-// Add at the top with other requires
-
-// Function to get transaction details
-async function getTransactionDetails(txHash) {
-    const interval = 5000; // 5 seconds
-    let attempts = 0;
-    const maxAttempts = 10; // Maximum number of attempts (optional)
-
-    const checkTransaction = async () => {
-        try {
-            // Check for the transaction receipt
-            const receipt = await bnbProvider.getTransactionReceipt(txHash);
-            if (!receipt) {
-                console.log('Transaction not found, checking again...');
-            } else {
-
-                const tx = await bnbProvider.getTransaction(txHash);
-
-                // If it's a token transfer, decode the input data
-                if (tx.data && tx.to) {
-                    // Add ERC20/BEP20 standard interface for decimals
-                    const tokenInterface = new ethers.Interface([
-                        'function transfer(address to, uint256 value)',
-                        'function decimals() view returns (uint8)'
-                    ]);
-
-                    try {
-                        const decodedData = tokenInterface.decodeFunctionData('transfer', tx.data);
-
-                        // Get token decimals
-                        const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
-                        const decimals = await tokenContract.decimals();
-
-                        // Format the value using the decimals
-                        const formattedValue = ethers.formatUnits(decodedData.value, decimals);
-
-                        console.log('Decoded Transfer Data:', {
-                            to: decodedData.to,
-                            value: formattedValue
-                        });
-                        clearInterval(polling); // Stop polling if transaction is found
-                        return formattedValue
-                    } catch (error) {
-                        console.error('Error decoding transaction data:', error);
-                    }
-                } else {
-                    // If it's a native token transfer (BNB)
-                    const formattedValue = ethers.formatEther(tx.value);
-                    console.log('Native Token Transfer:', {
-                        from: tx.from,
-                        to: tx.to,
-                        value: formattedValue,
-                        rawValue: tx.value.toString()
-                    });
-                }
-                clearInterval(polling); // Stop polling if transaction is found
-            }
-        } catch (error) {
-            console.error('Error fetching transaction details:', error);
-        }
-
-        attempts++;
-        if (attempts >= maxAttempts) {
-            clearInterval(polling); // Stop polling after max attempts
-            console.log('Max attempts reached. Stopping polling.');
-        }
-    };
-
-    const polling = setInterval(checkTransaction, interval);
-}
-
 
 app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
@@ -773,61 +702,6 @@ if (parseLiveQueryServer.server) {
 }
 
 
-// Replace the existing monitorEthereumTransfers function
-async function monitorEthereumTransfers() {
-    const WalletConfig = Parse.Object.extend("WalletConfig");
-    const query = new Parse.Query(WalletConfig);
-    query.equalTo("isActive", true);
-
-    // Get all active wallet configurations
-    const activeWallets = await query.find({ useMasterKey: true });
-
-    if (activeWallets.length === 0) {
-        console.log('No active wallets to monitor');
-        return;
-    }
-
-    console.log(`Starting Ethereum monitoring for ${activeWallets.length} wallets`);
-
-    for (const walletConfig of activeWallets) {
-        const walletAddress = walletConfig.get("walletAddress");
-        const className = walletConfig.get("transactionClassName");
-
-        // Monitor historical transactions for each wallet
-        try {
-            console.log(`Fetching historical transactions for ${walletAddress}...`);
-            const incomingEth = await alchemy.core.getAssetTransfers({
-                fromBlock: "0x0",
-                toBlock: "latest",
-                toAddress: walletAddress,
-                category: ["external", "internal"],
-            });
-
-            const incomingUsdt = await alchemy.core.getAssetTransfers({
-                fromBlock: "0x0",
-                toBlock: "latest",
-                toAddress: walletAddress,
-                contractAddresses: [USDT_ADDRESS],
-                category: ["erc20"],
-            });
-
-            // Process historical transactions
-            for (const tx of incomingEth.transfers) {
-                await processTransaction('ETH', tx, true, null, className);
-            }
-
-            for (const tx of incomingUsdt.transfers) {
-                await processTransaction('USDT', tx, true, null, className);
-            }
-        } catch (error) {
-            console.error(`Error processing historical transactions for ${walletAddress}:`, error);
-        }
-    }
-
-    console.log('Historical transaction processing completed');
-    console.log('Webhook endpoint ready at /webhook/transactions');
-}
-
 // Update processTransaction to ensure wallet address is correctly passed
 async function processTransaction(type, tx, isHistorical = false, block = null, className, networks) {
     try {
@@ -979,6 +853,19 @@ async function updateBonus(walletAddress, newBonus, startDate, endDate) {
     }
 }
 
+// Add this new endpoint for setting up wallet tracking
+app.post('/api/setupWalletTracking', async (req, res) => {
+    const { walletAddress, network, initialPrice, initialBonus, startDate, endDate } = req.body;
+
+    try {
+        // Call the setupWalletTracking function with the provided parameters
+        const config = await setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate);
+        res.status(200).json({ message: 'Wallet tracking setup successfully', config });
+    } catch (error) {
+        console.error('Error in setupWalletTracking:', error);
+        res.status(500).json({ error: 'Failed to setup wallet tracking' });
+    }
+});
 
 // Make sure to export the app if you're using it in other files
 module.exports = app;
