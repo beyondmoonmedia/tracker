@@ -865,6 +865,7 @@ app.post('/api/setupWalletTracking', async (req, res) => {
         console.error('Error in setupWalletTracking:', error);
         res.status(500).json({ error: 'Failed to setup wallet tracking' });
     }
+    console.log("visited")
 });
 
 // Make sure to export the app if you're using it in other files
