@@ -136,13 +136,18 @@ async function setupWalletConfig(walletAddress, network) {
     const query = new Parse.Query(WalletConfig);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
     let config = await query.first({ useMasterKey: true });
-
+    let net = network;
+    if (net === "BSC")
+        net === "BNB_MAINNET"
+    else
+        net = "ETH_MAINNET"
     if (!config) {
         // Create new wallet config
         config = new WalletConfig();
         await config.save({
             walletAddress: walletAddress.toLowerCase(),
             transactionClassName: walletClassName,
+            network: net,
             isActive: true
         }, { useMasterKey: true });
 
@@ -305,39 +310,6 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
         console.log(`Price setup: ${priceCheck ? 'Success' : 'Failed'}`);
         console.log(`Bonus setup: ${bonusCheck ? 'Success' : 'Failed'}`);
 
-        // Process historical transactions
-        const className = config.get("transactionClassName");
-        console.log(`\nProcessing historical transactions for class: ${className}`);
-
-        try {
-            const incomingEth = await alchemy.core.getAssetTransfers({
-                fromBlock: "0x0",
-                toBlock: "latest",
-                toAddress: walletAddress,
-                category: ["external", "internal"],
-            });
-
-            const incomingUsdt = await alchemy.core.getAssetTransfers({
-                fromBlock: "0x0",
-                toBlock: "latest",
-                toAddress: walletAddress,
-                contractAddresses: [USDT_ADDRESS],
-                category: ["erc20"],
-            });
-
-            console.log(`Found ${incomingEth.transfers.length} ETH transactions`);
-            console.log(`Found ${incomingUsdt.transfers.length} USDT transactions`);
-
-            for (const tx of incomingEth.transfers) {
-                await processTransaction('ETH', tx, true, null, className);
-            }
-
-            for (const tx of incomingUsdt.transfers) {
-                await processTransaction('USDT', tx, true, null, className);
-            }
-        } catch (error) {
-            console.error(`Error processing historical transactions:`, error);
-        }
 
         return config;
     } catch (error) {
