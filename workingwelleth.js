@@ -294,8 +294,8 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
         console.log(`Initial price: $${initialPrice}`);
         console.log(`Initial bonus: ${initialBonus * 100}%`);
 
-        const config = await setupWalletConfig(walletAddress, network);
-        await setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus, startDate, endDate);
+        const config = await setupWalletConfig(walletAddress.toLowerCase(), network);
+        await setupWalletPricingAndBonus(walletAddress.toLowerCase(), initialPrice, initialBonus, startDate, endDate);
 
         // Verify the setup worked
         const TokenPrice = Parse.Object.extend("TokenPrice");
