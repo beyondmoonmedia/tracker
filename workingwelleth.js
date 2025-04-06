@@ -421,6 +421,28 @@ app.use(cors({
     credentials: true
 }));
 
+app.post('/update-bonus', async (req, res) => {
+    const { walletAddress, newBonus, startDate, endDate } = req.body;
+    
+    if (!walletAddress || !newBonus || !startDate || !endDate) {
+        return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+
+    const result = await updateBonus(walletAddress, newBonus, startDate, endDate);
+    res.json(result);
+});
+
+app.post('/add-referral', async (req, res) => {
+    const { walletAddress, refAddress } = req.body;
+    
+    if (!walletAddress || !refAddress) {
+        return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+
+    const result = await addReferral(walletAddress, refAddress);
+    res.json(result);
+});
+
 app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
         console.log(req.body)
@@ -454,6 +476,8 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                     if (activity.category === "token") {
                         const tx = await bnbProvider.getTransaction(activity.hash);
 
+                        console.log("tx")
+                        console.log(tx)
                         // If it's a token transfer, decode the input data
                         if (tx.data && tx.to) {
                             // Add ERC20/BEP20 standard interface for decimals
@@ -464,11 +488,12 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
 
                             try {
                                 const decodedData = tokenInterface.decodeFunctionData('transfer', tx.data);
-
+                                console.log("decodedData")
+                                console.log(decodedData)
                                 // Get token decimals
                                 const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
                                 const decimals = await tokenContract.decimals();
-
+                                
                                 // Format the value using the decimals
                                 const formattedValue = ethers.formatUnits(decodedData.value, decimals);
 
@@ -481,13 +506,16 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                                         value: formattedValue.toString(),
                                         blockNumber: parseInt(activity.blockNum, 16),
                                     };
+                                    console.log("receipt")
 
                                     // Get block information using BNB provider
                                     const receipt = await bnbProvider.waitForTransaction(activity.hash);
+                                    console.log(receipt)
+                                    console.log("block")
 
                                     const block = await bnbProvider.getBlock(receipt.blockNumber);
-
                                     // Process the transaction
+                                    console.log(block)
                                     console.log(className)
                                     await processTransaction("USDT", tx, false, block, className, "BNB");
                                     console.log('Transaction processed successfully');
@@ -830,6 +858,71 @@ async function updateBonus(walletAddress, newBonus, startDate, endDate) {
         console.log('Bonus updated successfully');
     } catch (error) {
         console.error('Error updating bonus:', error);
+        throw error;
+    }
+}
+
+// Add a function to update bonus for future periods
+async function addReferral(walletAddress, refAddress) {
+    try {
+        const TokenReferral = Parse.Object.extend("Transaction_7846e7_BSC");
+        const referral_entry = new TokenReferral();
+
+        // Check contributions in both Transaction_7846e7_BSC and Transaction_7846e7_ETH tables
+        const TransactionBSC = Parse.Object.extend("Transaction_7846e7_BSC");
+        const TransactionETH = Parse.Object.extend("Transaction_7846e7_ETH");
+
+        const queryBSC = new Parse.Query(TransactionBSC);
+        queryBSC.equalTo("contributor", refAddress.toLowerCase());
+        queryBSC.limit(1);
+        queryBSC.ascending("timestamp"); // Assuming you have a timestamp field to sort by
+
+        const queryETH = new Parse.Query(TransactionETH);
+        queryETH.equalTo("contributor", refAddress.toLowerCase());
+        queryETH.limit(1);
+        queryETH.ascending("timestamp"); // Assuming you have a timestamp field to sort by
+
+        // Execute both queries in parallel
+        const [bscContribution, ethContribution] = await Promise.all([
+            queryBSC.first({ useMasterKey: true }),
+            queryETH.first({ useMasterKey: true })
+        ]);
+
+        // Determine which contribution is first
+        let firstContribution;
+        if (bscContribution && ethContribution) {
+            const bscTimestamp = bscContribution.get("timestamp");
+            const ethTimestamp = ethContribution.get("timestamp");
+
+            firstContribution = bscTimestamp < ethTimestamp ? bscContribution : ethContribution;
+        } else if (bscContribution) {
+            firstContribution = bscContribution;
+        } else if (ethContribution) {
+            firstContribution = ethContribution;
+        } else {
+            console.log(`Referral address ${refAddress} has not contributed yet.`);
+            throw new Error('Referral address has not contributed yet.');
+        }
+
+        // Calculate the bonus based on the first contribution
+        const firstContributionAmount = firstContribution.get("tokenAwarded"); // Assuming you have this field
+        const bonusTokens = firstContributionAmount * 0.10; // Calculate 10% bonus
+
+        // Set the referral details
+        referral_entry.set("contributor", walletAddress.toLowerCase());
+        referral_entry.set("refAddress", refAddress.toLowerCase());
+        referral_entry.set("refBonusTokens", bonusTokens); // Save the calculated bonus tokens
+
+        try {
+            await referral_entry.save(null, { useMasterKey: true });
+            console.log('Referral added successfully with bonus tokens:', bonusTokens);
+            return referral_entry;
+        } catch (error) {
+            console.error('Error adding referral:', error);
+            throw error;
+        }
+    } catch (error) {
+        console.error('Error updating referral:', error);
         throw error;
     }
 }

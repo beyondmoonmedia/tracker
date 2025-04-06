@@ -13,6 +13,8 @@ const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE'; // 
 const TOKEN_PRICE_USD = 0.013; // Price per token in USD
 // Express and Parse Server setup
 const app = express();
+
+app.use(express.json());
 const config = {
     databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
     appId: process.env.PARSE_APP_ID || 'myAppId',
@@ -146,6 +148,120 @@ function validateISODate(dateString) {
         return date.toISOString();
     } catch (error) {
         throw new Error(`Invalid date format: ${dateString}. Expected format: YYYY-MM-DDThh:mm:ss.000Z`);
+    }
+}
+
+
+
+// Add a function to update bonus for future periods
+async function addReferral(walletAddress, refAddress) {
+    try {
+        const TokenReferral = Parse.Object.extend("Transaction_7846e7_BSC");
+        const referral_entry = new TokenReferral();
+
+        // Check contributions in both Transaction_7846e7_BSC and Transaction_7846e7_ETH tables
+        const TransactionBSC = Parse.Object.extend("Transaction_7846e7_BSC");
+        const TransactionETH = Parse.Object.extend("Transaction_7846e7_ETH");
+
+        const queryBSC = new Parse.Query(TransactionBSC);
+        queryBSC.equalTo("contributor", refAddress.toLowerCase());
+        queryBSC.limit(1);
+        queryBSC.ascending("timestamp");
+
+        const queryETH = new Parse.Query(TransactionETH);
+        queryETH.equalTo("contributor", refAddress.toLowerCase());
+        queryETH.limit(1);
+        queryETH.ascending("timestamp");
+
+        // Execute both queries in parallel
+        const [bscContribution, ethContribution] = await Promise.all([
+            queryBSC.first({ useMasterKey: true }),
+            queryETH.first({ useMasterKey: true })
+        ]);
+
+        // Determine which contribution is first
+        let firstContribution;
+        if (bscContribution && ethContribution) {
+            const bscTimestamp = bscContribution.get("timestamp");
+            const ethTimestamp = ethContribution.get("timestamp");
+            firstContribution = bscTimestamp < ethTimestamp ? bscContribution : ethContribution;
+        } else if (bscContribution) {
+            firstContribution = bscContribution;
+        } else if (ethContribution) {
+            firstContribution = ethContribution;
+        } else {
+            console.log(`Referral address ${refAddress} has not contributed yet.`);
+            return { success: false, message: 'Referral address has not contributed yet.' };
+        }
+
+        // Calculate the bonus based on the first contribution
+        const firstContributionAmount = firstContribution.get("baseTokens");
+        console.log(firstContributionAmount)
+        const bonusTokens = firstContributionAmount * 0.10;
+
+        // Update total bonus for refAddress if it already exists
+        const existingReferralQuery = new Parse.Query(TokenReferral);
+        existingReferralQuery.equalTo("refAddress", refAddress.toLowerCase());
+        const existingReferral = await existingReferralQuery.first({ useMasterKey: true });
+
+        if (existingReferral) {
+            const totalBonusTokens = existingReferral.get("refBonusTokens") + bonusTokens;
+            existingReferral.set("refBonusTokens", totalBonusTokens);
+            await existingReferral.save(null, { useMasterKey: true });
+            console.log(`Updated total bonus for ${refAddress}: ${totalBonusTokens}`);
+        } else {
+            // Set the referral details for the new entry
+            referral_entry.set("contributor", walletAddress.toLowerCase());
+            referral_entry.set("refAddress", refAddress.toLowerCase());
+            referral_entry.set("refBonusTokens", bonusTokens);
+            await referral_entry.save(null, { useMasterKey: true });
+            console.log('Referral added successfully with bonus tokens:', bonusTokens);
+        }
+
+        // Calculate and add bonus for the walletAddress based on their first transaction
+        const walletQueryBSC = new Parse.Query(TransactionBSC);
+        walletQueryBSC.equalTo("contributor", walletAddress.toLowerCase());
+        walletQueryBSC.limit(1);
+        walletQueryBSC.ascending("timestamp");
+
+        const walletQueryETH = new Parse.Query(TransactionETH);
+        walletQueryETH.equalTo("contributor", walletAddress.toLowerCase());
+        walletQueryETH.limit(1);
+        walletQueryETH.ascending("timestamp");
+
+        const [walletBSCContribution, walletETHContribution] = await Promise.all([
+            walletQueryBSC.first({ useMasterKey: true }),
+            walletQueryETH.first({ useMasterKey: true })
+        ]);
+
+        let walletFirstContribution;
+        if (walletBSCContribution && walletETHContribution) {
+            const walletBscTimestamp = walletBSCContribution.get("timestamp");
+            const walletEthTimestamp = walletETHContribution.get("timestamp");
+            walletFirstContribution = walletBscTimestamp < walletEthTimestamp ? walletBSCContribution : walletETHContribution;
+        } else if (walletBSCContribution) {
+            walletFirstContribution = walletBSCContribution;
+        } else if (walletETHContribution) {
+            walletFirstContribution = walletETHContribution;
+        }
+
+        if (walletFirstContribution) {
+            const walletFirstContributionAmount = walletFirstContribution.get("tokenAwarded");
+            const walletBonusTokens = walletFirstContributionAmount * 0.10;
+
+            // Save the wallet bonus tokens (you can create a new entry or update an existing one)
+            const walletReferralEntry = new TokenReferral();
+            walletReferralEntry.set("contributor", walletAddress.toLowerCase());
+            walletReferralEntry.set("refAddress", walletAddress.toLowerCase());
+            walletReferralEntry.set("refBonusTokens", walletBonusTokens);
+            await walletReferralEntry.save(null, { useMasterKey: true });
+            console.log(`Wallet ${walletAddress} received bonus tokens: ${walletBonusTokens}`);
+        }
+
+        return referral_entry;
+    } catch (error) {
+        console.error('Error updating referral:', error);
+        throw error;
     }
 }
 
@@ -617,7 +733,6 @@ parseServer.start().then(async () => {
         }],
     }, { allowInsecureHTTP: true });
 
-    // Mount Parse Server and Dashboard
     app.use('/parse', parseServer.app);
     app.use('/dashboard', dashboard);
     app.get('/', (req, res) => res.send('Server is running'));
@@ -636,6 +751,25 @@ parseServer.start().then(async () => {
     console.error('Failed to start server:', error);
 });
 
+
+app.post('/add-referral', async (req, res) => {
+    const { walletAddress, refAddress } = req.body;
+
+    if (!walletAddress || !refAddress) {
+        return res.status(400).json({ error: 'walletAddress and refAddress are required' });
+    }
+
+    try {
+        const result = await addReferral(walletAddress, refAddress);
+        if (!result.success) {
+            return res.status(400).json({ message: result.message }); // Respond with a message if no contributions
+        }
+        res.status(200).json({ message: result.message, bonusTokens: result.bonusTokens });
+    } catch (error) {
+        console.error('Error adding referral:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
 
 module.exports = {
     setupWalletTracking,
