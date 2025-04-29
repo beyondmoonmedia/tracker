@@ -668,7 +668,6 @@ const HTTPS_PORT = 443;
 // Start HTTPS server
 httpsServer.listen(HTTPS_PORT, () => {
     console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
-    console.log('Monitoring classes:', ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']);
 });
 
 const io = socketIo(httpsServer, {
@@ -716,7 +715,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
     try {
         const fullWalletAddress = tx.to.toLowerCase();
         console.log("Processing transaction for", fullWalletAddress);
-        console.log("Processing transaction for", type);
+        console.log("Processing transaction for type: ", type);
+        console.log("Processing transaction for network:", networks);
 
         // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
@@ -764,6 +764,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             else if(type === "BNB") {
                 const bnbPrice = await getBNBPrice(blockNumber);
                 // Value is already in ETH from the webhook, no need to format
+                console.log("bnbPrice", bnbPrice)
                 amountInUSD = tx.value * bnbPrice;
                 console.log(`BNB Amount: ${tx.value} BNB`);
                 console.log(`BNB Price: $${bnbPrice}`);
@@ -795,8 +796,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             console.log(`amountInUSD: ${amountInUSD}`);
 
             const transaction = new Transaction();
-            if (type === "USDT")
-                networks = "USDT"
+            // if (type === "USDT")
+            //     networks = "USDT"
             const data = {
                 contributor: tx.from.toLowerCase(),
                 tokenType: networks,
