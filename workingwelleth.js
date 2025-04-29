@@ -423,7 +423,7 @@ app.use(cors({
 
 app.post('/update-bonus', async (req, res) => {
     const { walletAddress, newBonus, startDate, endDate } = req.body;
-    
+
     if (!walletAddress || !newBonus || !startDate || !endDate) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
@@ -434,7 +434,7 @@ app.post('/update-bonus', async (req, res) => {
 
 app.post('/add-referral', async (req, res) => {
     const { walletAddress, refAddress } = req.body;
-    
+
     if (!walletAddress || !refAddress) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
@@ -493,7 +493,7 @@ app.post('/webhook/bsc/transactions', async (req, res) => {
                                 // Get token decimals
                                 const tokenContract = new ethers.Contract(tx.to, tokenInterface, bnbProvider);
                                 const decimals = await tokenContract.decimals();
-                                
+
                                 // Format the value using the decimals
                                 const formattedValue = ethers.formatUnits(decodedData.value, decimals);
 
@@ -746,7 +746,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         if (networks === 'ETH') {
             if (type === "USDT")
                 amountInUSD = Number(tx.value);
-            else if(type === "ETH") {
+            else if (type === "ETH") {
                 const ethPrice = await getETHPrice(blockNumber);
                 amountInUSD = tx.value * ethPrice;
                 console.log(`ETH Amount: ${tx.value} ETH`);
@@ -761,7 +761,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
 
             if (type === "USDT")
                 amountInUSD = Number(tx.value);
-            else if(type === "BNB") {
+            else if (type === "ETH") {
                 const bnbPrice = await getBNBPrice(blockNumber);
                 // Value is already in ETH from the webhook, no need to format
                 console.log("bnbPrice", bnbPrice)
