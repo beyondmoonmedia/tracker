@@ -777,6 +777,81 @@ if (parseLiveQueryServer.server) {
         });
     });
 }
+async function processTransactionSOL(tx, className) {
+    try {
+        // Use the slot as a timestamp stand-in
+        let timestamp = new Date();  // fallback now
+        let blockNumber = tx.blockNumber || tx.slot;  // alias slot as blockNumber
+
+        // If you have a Solana RPC connection, you can do:
+        // const block = await solanaConnection.getBlock(tx.slot);
+        // timestamp = new Date(block.blockTime * 1000);
+
+        const amountInUSD = tx.fee / 1e9 * 20; // Estimate SOL at $20, adjust or fetch real
+        console.log(`\nProcessing SOL transaction:`);
+        console.log(`Signature: ${tx.signature}`);
+        console.log(`Slot: ${tx.slot}`);
+        console.log(`Fee in lamports: ${tx.fee}`);
+        console.log(`Estimated USD: $${amountInUSD}`);
+        console.log(`Tracked wallet involved: ${tx.walletAddress}`);
+
+        // Calculate token rewards
+        const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress);
+
+        // Check if tx already exists
+        const Transaction = Parse.Object.extend(className);
+        const query = new Parse.Query(Transaction);
+        query.equalTo("txHash", tx.signature);
+        const exists = await query.first({ useMasterKey: true });
+
+        if (exists) {
+            console.log(`Transaction ${tx.signature} already exists in ${className}`);
+            return;
+        }
+
+        // Save transaction
+        if (amountInUSD > 0) {
+            const tokenPrice = await getTokenPriceForTimestamp(timestamp, tx.walletAddress);
+            const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress);
+
+            console.log('\nFinal Transaction Details:');
+            console.log(`Token Price: $${tokenPrice}`);
+            console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
+            console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
+            console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
+            console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
+
+            const transaction = new Transaction();
+            const data = {
+                contributor: tx.walletAddress.toLowerCase(),
+                tokenType: "SOL",
+                txHash: tx.signature,
+                blockNumber: blockNumber.toString(),
+                timestamp: timestamp,
+                amountInUSD: amountInUSD,
+                amountInToken: tx.fee / 1e9,  // fee in SOL
+                tokenPrice: tokenPrice,
+                bonusPercentage: bonusPercentage,
+                hasBonus: bonusPercentage > 0,
+                baseTokens: tokenRewards.baseTokens,
+                bonusTokens: tokenRewards.bonusTokens,
+                tokenAwarded: tokenRewards.totalTokens,
+                walletAddress: tx.walletAddress.toLowerCase()
+            };
+
+            await transaction.save(data, { useMasterKey: true });
+            console.log(`SOL transaction saved successfully: ${tx.signature}`);
+        }
+    } catch (error) {
+        console.error("\nError processing SOL transaction:", error);
+        console.error("Transaction details:", {
+            signature: tx.signature,
+            slot: tx.slot,
+            fee: tx.fee,
+            walletAddress: tx.walletAddress
+        });
+    }
+}
 
 
 // Update processTransaction to ensure wallet address is correctly passed
