@@ -686,7 +686,7 @@ app.post('/webhook/sol/transactions', async (req, res) => {
                     };
 
                     // Example processing call (similar to your ETH)
-                    await processTransaction("SOL", tx, false, { slot }, className, "SOLANA");
+                    await processTransactionSOL(tx, className);
                     console.log('Transaction processed successfully');
 
                 } catch (error) {
