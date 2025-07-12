@@ -634,11 +634,10 @@ app.post('/webhook/eth/transactions', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-
+// SOLANA WEBHOOK ENDPOINT
 app.post('/webhook/sol/transactions', async (req, res) => {
     try {
-        console.log('Solana webhook payload:', req.body);
-        console.log('Solana webhook payload:', req.body.event.transaction);
+        console.log('Received Solana webhook payload:', JSON.stringify(req.body, null, 2));
 
         // Check if it's an address activity webhook
         if (req.body.type !== 'ADDRESS_ACTIVITY') {
@@ -659,17 +658,15 @@ app.post('/webhook/sol/transactions', async (req, res) => {
         for (const txEvent of transactions) {
             const signature = txEvent.signature;
             const slot = txEvent.slot;
-            const accountKeys = txEvent.transaction[0].message[0].account_keys;
+            const accountKeys = txEvent.transaction?.[0]?.message?.[0]?.account_keys || [];
 
             for (const walletConfig of activeWallets) {
                 const walletAddress = walletConfig.get("walletAddress");
                 const className = walletConfig.get("transactionClassName");
                 const networks = walletConfig.get("network");
 
-                // Only process for SOLANA_MAINNET
                 if (req.body.event.network !== networks) continue;
 
-                // Check if wallet is involved in the transaction
                 const isInvolved = accountKeys.some(acc => acc === walletAddress);
                 if (!isInvolved) continue;
 
@@ -679,16 +676,14 @@ app.post('/webhook/sol/transactions', async (req, res) => {
                     const tx = {
                         signature: signature,
                         slot: slot,
-                        fee: txEvent.meta[0].fee,
-                        preBalances: txEvent.meta[0].pre_balances,
-                        postBalances: txEvent.meta[0].post_balances,
-                        logs: txEvent.meta[0].log_messages || []
+                        fee: txEvent.meta?.[0]?.fee || 0,
+                        preBalances: txEvent.meta?.[0]?.pre_balances || [],
+                        postBalances: txEvent.meta?.[0]?.post_balances || [],
+                        logs: txEvent.meta?.[0]?.log_messages || [],
+                        walletAddress: walletAddress
                     };
 
-                    // Example processing call (similar to your ETH)
                     await processTransactionSOL(tx, className);
-                    console.log('Transaction processed successfully');
-
                 } catch (error) {
                     console.error('Error processing Solana transaction:', error);
                     continue;
@@ -777,28 +772,24 @@ if (parseLiveQueryServer.server) {
         });
     });
 }
+
 async function processTransactionSOL(tx, className) {
     try {
-        // Use the slot as a timestamp stand-in
-        let timestamp = new Date();  // fallback now
-        let blockNumber = tx.blockNumber || tx.slot;  // alias slot as blockNumber
+        let timestamp = new Date();  // fallback timestamp
+        let blockNumber = tx.slot || 0;  // slot as block equivalent
 
-        // If you have a Solana RPC connection, you can do:
-        // const block = await solanaConnection.getBlock(tx.slot);
-        // timestamp = new Date(block.blockTime * 1000);
+        // Estimate USD (fee in lamports -> SOL)
+        const feeInSOL = tx.fee / 1e9;
+        const estSOLPrice = 20;  // adjust or fetch real
+        const amountInUSD = feeInSOL * estSOLPrice;
 
-        const amountInUSD = tx.fee / 1e9 * 20; // Estimate SOL at $20, adjust or fetch real
         console.log(`\nProcessing SOL transaction:`);
         console.log(`Signature: ${tx.signature}`);
         console.log(`Slot: ${tx.slot}`);
-        console.log(`Fee in lamports: ${tx.fee}`);
-        console.log(`Estimated USD: $${amountInUSD}`);
+        console.log(`Fee: ${tx.fee} lamports (${feeInSOL} SOL ~ $${amountInUSD})`);
         console.log(`Tracked wallet involved: ${tx.walletAddress}`);
 
-        // Calculate token rewards
-        const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress);
-
-        // Check if tx already exists
+        // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
         const query = new Parse.Query(Transaction);
         query.equalTo("txHash", tx.signature);
@@ -809,18 +800,20 @@ async function processTransactionSOL(tx, className) {
             return;
         }
 
+        // Calculate rewards
+        const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress.toLowerCase());
+        const tokenPrice = await getTokenPriceForTimestamp(timestamp, tx.walletAddress.toLowerCase());
+        const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
+
+        console.log('\nFinal Transaction Details:');
+        console.log(`Token Price: $${tokenPrice}`);
+        console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
+        console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
+        console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
+        console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
+
         // Save transaction
         if (amountInUSD > 0) {
-            const tokenPrice = await getTokenPriceForTimestamp(timestamp, tx.walletAddress);
-            const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress);
-
-            console.log('\nFinal Transaction Details:');
-            console.log(`Token Price: $${tokenPrice}`);
-            console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
-            console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
-            console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
-            console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
-
             const transaction = new Transaction();
             const data = {
                 contributor: tx.walletAddress.toLowerCase(),
@@ -829,7 +822,7 @@ async function processTransactionSOL(tx, className) {
                 blockNumber: blockNumber.toString(),
                 timestamp: timestamp,
                 amountInUSD: amountInUSD,
-                amountInToken: tx.fee / 1e9,  // fee in SOL
+                amountInToken: feeInSOL,
                 tokenPrice: tokenPrice,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
@@ -852,6 +845,7 @@ async function processTransactionSOL(tx, className) {
         });
     }
 }
+
 
 
 // Update processTransaction to ensure wallet address is correctly passed
