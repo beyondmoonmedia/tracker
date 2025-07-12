@@ -638,6 +638,7 @@ app.post('/webhook/eth/transactions', async (req, res) => {
 app.post('/webhook/sol/transactions', async (req, res) => {
     try {
         console.log('Solana webhook payload:', req.body);
+        console.log('Solana webhook payload:', req.body.event.transaction);
 
         // Check if it's an address activity webhook
         if (req.body.type !== 'ADDRESS_ACTIVITY') {
