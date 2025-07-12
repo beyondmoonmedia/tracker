@@ -635,6 +635,74 @@ app.post('/webhook/eth/transactions', async (req, res) => {
     }
 });
 
+app.post('/webhook/sol/transactions', async (req, res) => {
+    try {
+        console.log('Solana webhook payload:', req.body);
+
+        // Check if it's an address activity webhook
+        if (req.body.type !== 'ADDRESS_ACTIVITY') {
+            return res.status(200).json({ message: 'Not an address activity event' });
+        }
+
+        const transactions = req.body.event.transaction;
+        if (!Array.isArray(transactions)) {
+            return res.status(200).json({ message: 'No transactions to process' });
+        }
+
+        // Get all active wallets
+        const WalletConfig = Parse.Object.extend("WalletConfig");
+        const query = new Parse.Query(WalletConfig);
+        query.equalTo("isActive", true);
+        const activeWallets = await query.find({ useMasterKey: true });
+
+        for (const txEvent of transactions) {
+            const signature = txEvent.signature;
+            const slot = txEvent.slot;
+            const accountKeys = txEvent.transaction[0].account_keys;  // usually at transaction[0]
+
+            for (const walletConfig of activeWallets) {
+                const walletAddress = walletConfig.get("walletAddress");
+                const className = walletConfig.get("transactionClassName");
+                const networks = walletConfig.get("network");
+
+                // Only process for SOLANA_MAINNET
+                if (req.body.event.network !== networks) continue;
+
+                // Check if wallet is involved in the transaction
+                const isInvolved = accountKeys.some(acc => acc === walletAddress);
+                if (!isInvolved) continue;
+
+                console.log(`\nNew SOL transaction detected for ${walletAddress}`);
+
+                try {
+                    const tx = {
+                        signature: signature,
+                        slot: slot,
+                        fee: txEvent.meta[0].fee,
+                        preBalances: txEvent.meta[0].pre_balances,
+                        postBalances: txEvent.meta[0].post_balances,
+                        logs: txEvent.meta[0].log_messages || []
+                    };
+
+                    // Example processing call (similar to your ETH)
+                    await processTransaction("SOL", tx, false, { slot }, className, "SOLANA");
+                    console.log('Transaction processed successfully');
+
+                } catch (error) {
+                    console.error('Error processing Solana transaction:', error);
+                    continue;
+                }
+            }
+        }
+
+        res.status(200).json({ message: 'Solana transactions processed successfully' });
+
+    } catch (error) {
+        console.error('Error processing Solana webhook:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Create HTTPS server using the existing app
 const sslOptions = {
     key: fs.readFileSync('private.key'),
