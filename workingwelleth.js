@@ -659,7 +659,7 @@ app.post('/webhook/sol/transactions', async (req, res) => {
         for (const txEvent of transactions) {
             const signature = txEvent.signature;
             const slot = txEvent.slot;
-            const accountKeys = txEvent.transaction[0].account_keys;  // usually at transaction[0]
+            const accountKeys = txEvent.transaction[0].message[0].account_keys;
 
             for (const walletConfig of activeWallets) {
                 const walletAddress = walletConfig.get("walletAddress");
