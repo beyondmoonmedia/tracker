@@ -802,14 +802,17 @@ if (parseLiveQueryServer.server) {
         });
     });
 }
-
+// ✅ Main SOL transaction processor
 async function processTransactionSOL(tx, className) {
     try {
         let blockNumber = tx.slot || 0;
-        const timestamp = await getSolBlockTime(blockNumber);
+
+        // ✅ Forcing timestamp to NOW for stable bonus & price lookups
+        const timestamp = new Date();
+
         const solPrice = await getLiveSOLPrice();
 
-        // Find the index with the largest positive balance delta
+        // ✅ Find max positive balance delta
         let maxDiffInSOL = 0;
         let walletIndex = -1;
 
@@ -834,8 +837,9 @@ async function processTransactionSOL(tx, className) {
         console.log(`Detected max SOL received: ${maxDiffInSOL} SOL ~ $${amountInUSD}`);
         console.log(`Live SOL price: $${solPrice}`);
         console.log(`Tracked wallet (by index): ${walletIndex}`);
-        console.log(`Block timestamp: ${timestamp}`);
+        console.log(`Block timestamp (forced now): ${timestamp}`);
 
+        // ✅ Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
         const query = new Parse.Query(Transaction);
         query.equalTo("txHash", tx.signature);
@@ -858,6 +862,7 @@ async function processTransactionSOL(tx, className) {
             console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
             console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
 
+            // ✅ Save to Parse
             const transaction = new Transaction();
             const data = {
                 contributor: tx.walletAddress.toLowerCase(),
@@ -877,12 +882,12 @@ async function processTransactionSOL(tx, className) {
             };
 
             await transaction.save(data, { useMasterKey: true });
-            console.log(`SOL transaction saved successfully: ${tx.signature}`);
+            console.log(`✅ SOL transaction saved successfully: ${tx.signature}`);
         } else {
             console.log(`No SOL received (amountInUSD <= 0), transaction skipped.`);
         }
     } catch (error) {
-        console.error("\nError processing SOL transaction:", error);
+        console.error("\n❌ Error processing SOL transaction:", error);
         console.error("Transaction details:", {
             signature: tx.signature,
             slot: tx.slot,
@@ -891,7 +896,6 @@ async function processTransactionSOL(tx, className) {
         });
     }
 }
-
 
 
 
