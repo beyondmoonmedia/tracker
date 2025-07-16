@@ -12,7 +12,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 
-import { Connection, clusterApiUrl } from '@solana/web3.js';
+const { Connection, clusterApiUrl } = require('@solana/web3.js');
 
 const solanaConnection = new Connection(clusterApiUrl('mainnet-beta'));
 // Constants
