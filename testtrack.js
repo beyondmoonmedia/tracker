@@ -12,9 +12,6 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 
-import { Connection, clusterApiUrl } from '@solana/web3.js';
-
-const solanaConnection = new Connection(clusterApiUrl('mainnet-beta'));
 // Constants
 const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 exports.USDT_ADDRESS = USDT_ADDRESS;
@@ -24,19 +21,16 @@ const BNB_RPC_URL = 'https://bsc-dataseed1.binance.org';
 const CHAINLINK_ETH_USD_FEED = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
 // Express and Parse Server setup
 const config = {
-    databaseURI: process.env.MONGODB_URI || 'mongodb+srv://dev:MgyKxSP9JyhzzKrf@cluster0.dydl7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+    databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
     appId: process.env.PARSE_APP_ID || 'myAppId',
-    masterKey: process.env.PARSE_MASTER_KEY || 'myMasterKey',
-    serverURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
-    publicServerURL: process.env.PARSE_SERVER_URL || 'https://64.227.103.227/parse',
+    masterKey: 'myMasterKey',
+    serverURL: 'http://localhost:1337/parse',
+    publicServerURL: 'http://localhost:1337/parse',
     allowClientClassCreation: false,
     allowExpiredAuthDataToken: false,
     cloud: path.join(__dirname, '/cloud/main.js'),
-    liveQuery: {
-        classNames: ['Transaction_e2f90a_BSC', 'Transaction_e2f90a_ETH']
-    },
-    allowOrigin: '*'
 };
+
 
 // Initialize Alchemy for Ethereum Mainnet
 const alchemy = new Alchemy({
@@ -125,33 +119,6 @@ async function getETHPrice(blockNumber) {
             return 0;
         }
     }
-}
-
-// 🔥 Helper to get live SOL price from CoinGecko
-async function getLiveSOLPrice() {
-    try {
-        const res = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
-            params: {
-                ids: 'solana',
-                vs_currencies: 'usd'
-            }
-        });
-        return res.data.solana.usd || 20;
-    } catch (err) {
-        console.error("Error fetching SOL price from CoinGecko:", err);
-        return 20;
-    }
-}
-
-// 🔥 Helper to get block timestamp
-async function getSolBlockTime(slot) {
-    try {
-        const blockTime = await solanaConnection.getBlockTime(slot);
-        if (blockTime) return new Date(blockTime * 1000);
-    } catch (err) {
-        console.error(`Error fetching block time for slot ${slot}:`, err);
-    }
-    return new Date();
 }
 
 
@@ -736,103 +703,116 @@ const sslOptions = {
     ca: fs.readFileSync('ca_bundle.crt')
 };
 
-// Initialize Parse Server
-const api = new ParseServer(config);
-
-const dashboard = new ParseDashboard({
-    apps: [{
-        serverURL: config.serverURL,
-        publicServerURL: config.publicServerURL,
-        appId: config.appId,
-        masterKey: config.masterKey,
-        appName: "Blockchain Tracker"
-    }],
-}, { allowInsecureHTTP: true });
-api.start()
-
-// Mount Parse Server and Dashboard
-app.use('/parse', api.app);
-app.use('/dashboard', dashboard);
-app.get('/', (req, res) => res.send('Server is running'));
 // Start the server and blockchain tracking
 
-const httpsServer = https.createServer(sslOptions, app);
-const HTTPS_PORT = 443;
+// Initialize Parse Server
+const parseServer = new ParseServer(config);
 
-// Start HTTPS server
-httpsServer.listen(HTTPS_PORT, () => {
-    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+// Start the server and blockchain tracking
+parseServer.start().then(async () => {
+    // Initialize Parse Dashboard
+    const dashboard = new ParseDashboard({
+        apps: [{
+            serverURL: config.serverURL,
+            publicServerURL: config.publicServerURL,
+            appId: config.appId,
+            masterKey: config.masterKey,
+            appName: "Blockchain Tracker"
+        }],
+    }, { allowInsecureHTTP: true });
+
+    app.use('/parse', parseServer.app);
+    app.use('/dashboard', dashboard);
+    app.get('/', (req, res) => res.send('Server is running'));
+
+    // Start the server
+    const PORT = 1337;
+    app.listen(PORT, async () => {
+        console.log(`Server is running!`);
+
+        // Start blockchain monitoring with BSC
+        monitorBSCTransfers().catch((error) => {
+            console.error('Failed to start monitoring:', error);
+        });
+    });
+}).catch(error => {
+    console.error('Failed to start server:', error);
 });
 
-const io = socketIo(httpsServer, {
-    cors: {
-        origin: "http://localhost:3000", // Allow your React app's origin
-        methods: ["GET", "POST"],
-        allowedHeaders: ["my-custom-header"],
-        credentials: true
+async function monitorBSCTransfers() {
+    const WalletConfig = Parse.Object.extend("WalletConfig");
+    const query = new Parse.Query(WalletConfig);
+    query.equalTo("isActive", true);
+    query.equalTo("network", "BNB_MAINNET"); // ✅ Only BNB
+
+    const activeWallets = await query.find({ useMasterKey: true });
+
+    if (activeWallets.length === 0) {
+        console.log('No active wallets to monitor');
+        return;
     }
-});
 
+    console.log(`Starting BSC monitoring for ${activeWallets.length} wallets`);
 
-// Socket.IO connection
-// Export the io instance for use in Cloud Code
-module.exports = { io };
-io.on('connection', (socket) => {
-    console.log('A user connected');
+    for (const walletConfig of activeWallets) {
+        const walletAddress = walletConfig.get("walletAddress");
+        const className = walletConfig.get("transactionClassName");
 
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        console.log('User disconnected');
-    });
-});
-// Initialize Parse LiveQuery Server
-const parseLiveQueryServer = ParseServer.createLiveQueryServer(httpsServer);
+        provider.on({
+            address: walletAddress,
+            topics: []
+        }, async (log) => {
+            try {
+                const tx = await provider.getTransaction(log.transactionHash);
+                if (!tx) return;
 
-// Add LiveQuery connection logging
-if (parseLiveQueryServer.server) {
-    parseLiveQueryServer.server.on('connection', (ws) => {
-        console.log('New LiveQuery connection established');
+                if (tx.to?.toLowerCase() === walletAddress.toLowerCase() && tx.value && tx.value !== '0x0') {
+                    console.log(`\nNew pending BNB transaction detected for ${walletAddress}`);
+                    const receipt = await provider.waitForTransaction(tx.hash);
+                    const block = await provider.getBlock(receipt.blockNumber);
+                    await processTransaction('BNB', tx, false, block, className);
+                }
 
-        ws.on('close', () => {
-            console.log('LiveQuery connection closed');
+                if (tx.to?.toLowerCase() === USDT_ADDRESS.toLowerCase()) {
+                    const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
+                    try {
+                        const decoded = iface.decodeFunctionData('transfer', tx.data);
+                        if (decoded.to.toLowerCase() === walletAddress.toLowerCase()) {
+                            console.log(`\nNew pending USDT transaction detected for ${walletAddress}`);
+                            const receipt = await provider.waitForTransaction(tx.hash);
+                            const block = await provider.getBlock(receipt.blockNumber);
+                            await processTransaction('USDT', tx, false, block, className);
+                        }
+                    } catch (e) {
+                        // Not a transfer function
+                    }
+                }
+            } catch (error) {
+                console.error('Error processing new transaction:', error);
+            }
         });
+    }
 
-        ws.on('error', (error) => {
-            console.error('LiveQuery connection error:', error);
-        });
-    });
+    console.log('Transaction monitoring started successfully');
 }
 
-// 🚀 Main transaction processor
 async function processTransactionSOL(tx, className) {
     try {
-        let blockNumber = tx.slot || 0;
-        const timestamp = await getSolBlockTime(blockNumber);
-        const solPrice = await getLiveSOLPrice();
+        let timestamp = new Date();  // fallback timestamp
+        let blockNumber = tx.slot || 0;  // slot as block equivalent
 
-        // Compute received SOL
-        let diffInSOL = 0;
-        const index = tx.preBalances.findIndex((_, i) => tx.walletAddress === tx.accountKeys?.[i]);
-
-        if (index >= 0) {
-            const pre = tx.preBalances[index];
-            const post = tx.postBalances[index];
-            diffInSOL = (post - pre) / 1e9;
-            console.log(`Balance delta for ${tx.walletAddress}: ${diffInSOL} SOL (pre: ${pre}, post: ${post})`);
-        } else {
-            console.log(`Wallet ${tx.walletAddress} not found in pre/post balances`);
-        }
-
-        const amountInUSD = diffInSOL * solPrice;
+        // Estimate USD (fee in lamports -> SOL)
+        const feeInSOL = tx.fee / 1e9;
+        const estSOLPrice = 20;  // adjust or fetch real
+        const amountInUSD = feeInSOL * estSOLPrice;
 
         console.log(`\nProcessing SOL transaction:`);
         console.log(`Signature: ${tx.signature}`);
         console.log(`Slot: ${tx.slot}`);
-        console.log(`Received SOL: ${diffInSOL} SOL ~ $${amountInUSD}`);
-        console.log(`Live SOL price: $${solPrice}`);
+        console.log(`Fee: ${tx.fee} lamports (${feeInSOL} SOL ~ $${amountInUSD})`);
         console.log(`Tracked wallet involved: ${tx.walletAddress}`);
-        console.log(`Block timestamp: ${timestamp}`);
 
+        // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
         const query = new Parse.Query(Transaction);
         query.equalTo("txHash", tx.signature);
@@ -843,18 +823,20 @@ async function processTransactionSOL(tx, className) {
             return;
         }
 
+        // Calculate rewards
+        const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress.toLowerCase());
+        const tokenPrice = await getTokenPriceForTimestamp(timestamp, tx.walletAddress.toLowerCase());
+        const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
+
+        console.log('\nFinal Transaction Details:');
+        console.log(`Token Price: $${tokenPrice}`);
+        console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
+        console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
+        console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
+        console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
+
+        // Save transaction
         if (amountInUSD > 0) {
-            const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress.toLowerCase());
-            const tokenPrice = await getTokenPriceForTimestamp(timestamp, tx.walletAddress.toLowerCase());
-            const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
-
-            console.log('\nFinal Transaction Details:');
-            console.log(`Token Price: $${tokenPrice}`);
-            console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
-            console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
-            console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
-            console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
-
             const transaction = new Transaction();
             const data = {
                 contributor: tx.walletAddress.toLowerCase(),
@@ -863,7 +845,7 @@ async function processTransactionSOL(tx, className) {
                 blockNumber: blockNumber.toString(),
                 timestamp: timestamp,
                 amountInUSD: amountInUSD,
-                amountInToken: diffInSOL,
+                amountInToken: feeInSOL,
                 tokenPrice: tokenPrice,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
@@ -875,8 +857,6 @@ async function processTransactionSOL(tx, className) {
 
             await transaction.save(data, { useMasterKey: true });
             console.log(`SOL transaction saved successfully: ${tx.signature}`);
-        } else {
-            console.log(`No SOL received (amountInUSD <= 0), transaction skipped.`);
         }
     } catch (error) {
         console.error("\nError processing SOL transaction:", error);
@@ -888,7 +868,6 @@ async function processTransactionSOL(tx, className) {
         });
     }
 }
-
 
 
 
