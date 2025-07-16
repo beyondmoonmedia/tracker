@@ -803,34 +803,37 @@ if (parseLiveQueryServer.server) {
     });
 }
 
-// 🚀 Main transaction processor
 async function processTransactionSOL(tx, className) {
     try {
         let blockNumber = tx.slot || 0;
         const timestamp = await getSolBlockTime(blockNumber);
         const solPrice = await getLiveSOLPrice();
 
-        // Compute received SOL
-        let diffInSOL = 0;
-        const index = tx.preBalances.findIndex((_, i) => tx.walletAddress === tx.accountKeys?.[i]);
+        // Find the index with the largest positive balance delta
+        let maxDiffInSOL = 0;
+        let walletIndex = -1;
 
-        if (index >= 0) {
-            const pre = tx.preBalances[index];
-            const post = tx.postBalances[index];
-            diffInSOL = (post - pre) / 1e9;
-            console.log(`Balance delta for ${tx.walletAddress}: ${diffInSOL} SOL (pre: ${pre}, post: ${post})`);
-        } else {
-            console.log(`Wallet ${tx.walletAddress} not found in pre/post balances`);
+        for (let i = 0; i < tx.preBalances.length; i++) {
+            const pre = tx.preBalances[i];
+            const post = tx.postBalances[i];
+            const diffInSOL = (post - pre) / 1e9;
+
+            console.log(`Balance delta index ${i}: ${diffInSOL} SOL (pre: ${pre}, post: ${post})`);
+
+            if (diffInSOL > maxDiffInSOL) {
+                maxDiffInSOL = diffInSOL;
+                walletIndex = i;
+            }
         }
 
-        const amountInUSD = diffInSOL * solPrice;
+        const amountInUSD = maxDiffInSOL * solPrice;
 
         console.log(`\nProcessing SOL transaction:`);
         console.log(`Signature: ${tx.signature}`);
         console.log(`Slot: ${tx.slot}`);
-        console.log(`Received SOL: ${diffInSOL} SOL ~ $${amountInUSD}`);
+        console.log(`Detected max SOL received: ${maxDiffInSOL} SOL ~ $${amountInUSD}`);
         console.log(`Live SOL price: $${solPrice}`);
-        console.log(`Tracked wallet involved: ${tx.walletAddress}`);
+        console.log(`Tracked wallet (by index): ${walletIndex}`);
         console.log(`Block timestamp: ${timestamp}`);
 
         const Transaction = Parse.Object.extend(className);
@@ -863,7 +866,7 @@ async function processTransactionSOL(tx, className) {
                 blockNumber: blockNumber.toString(),
                 timestamp: timestamp,
                 amountInUSD: amountInUSD,
-                amountInToken: diffInSOL,
+                amountInToken: maxDiffInSOL,
                 tokenPrice: tokenPrice,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
