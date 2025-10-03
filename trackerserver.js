@@ -510,6 +510,7 @@ async function monitorBSCTransfers() {
     const WalletConfig = Parse.Object.extend("WalletConfig");
     const query = new Parse.Query(WalletConfig);
     query.equalTo("isActive", true);
+    query.equalTo("network", "BNB_MAINNET"); // ✅ Only BNB
 
     const activeWallets = await query.find({ useMasterKey: true });
 

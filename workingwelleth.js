@@ -473,6 +473,89 @@ app.post('/add-referral', async (req, res) => {
     res.json(result);
 });
 
+// Add endpoint for updating price and time periods
+app.post('/api/update-price', async (req, res) => {
+    const { walletAddress, price, marketCap, startDate, endDate } = req.body;
+
+    if (!walletAddress || !price || !marketCap || !startDate || !endDate) {
+        return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+
+    try {
+        // Validate dates
+        const formattedStartDate = validateISODate(startDate);
+        const formattedEndDate = validateISODate(endDate);
+
+        // Create new price period
+        const TokenPrice = Parse.Object.extend("TokenPrice");
+        const priceEntry = new TokenPrice();
+        
+        await priceEntry.save({
+            walletAddress: walletAddress.toLowerCase(),
+            price: parseFloat(price),
+            marketCap: parseFloat(marketCap),
+            startDate: new Date(formattedStartDate),
+            endDate: new Date(formattedEndDate)
+        }, { useMasterKey: true });
+
+        res.json({ success: true, message: 'Price period updated successfully', priceEntry });
+    } catch (error) {
+        console.error('Error updating price:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Add endpoint for getting current price
+app.get('/api/current-price/:walletAddress', async (req, res) => {
+    try {
+        const { walletAddress } = req.params;
+        const query = new Parse.Query("TokenPrice");
+        query.equalTo("walletAddress", walletAddress.toLowerCase());
+        query.descending("createdAt");
+        const result = await query.first({ useMasterKey: true });
+        
+        if (result) {
+            res.json({
+                success: true,
+                price: result.get("price"),
+                marketCap: result.get("marketCap"),
+                startDate: result.get("startDate"),
+                endDate: result.get("endDate")
+            });
+        } else {
+            res.json({ success: false, message: 'No price data found' });
+        }
+    } catch (error) {
+        console.error('Error fetching current price:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Add endpoint for getting price history
+app.get('/api/price-history/:walletAddress', async (req, res) => {
+    try {
+        const { walletAddress } = req.params;
+        const query = new Parse.Query("TokenPrice");
+        query.equalTo("walletAddress", walletAddress.toLowerCase());
+        query.descending("createdAt");
+        const results = await query.find({ useMasterKey: true });
+        
+        const priceHistory = results.map(price => ({
+            id: price.id,
+            price: price.get("price"),
+            marketCap: price.get("marketCap"),
+            startDate: price.get("startDate"),
+            endDate: price.get("endDate"),
+            createdAt: price.get("createdAt")
+        }));
+
+        res.json({ success: true, priceHistory });
+    } catch (error) {
+        console.error('Error fetching price history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/webhook/bsc/transactions', async (req, res) => {
     try {
         console.log(req.body)
@@ -935,6 +1018,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         if (networks === 'ETH') {
             if (type === "USDT")
                 amountInUSD = Number(tx.value);
+            else if (type === "USDT")
+                amountInUSD = Number(tx.value);
             else if (type === "ETH") {
                 const ethPrice = await getETHPrice(blockNumber);
                 amountInUSD = tx.value * ethPrice;
@@ -949,6 +1034,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         } else if (networks === 'BNB') {
 
             if (type === "USDT")
+                amountInUSD = Number(tx.value);
+            else if (type === "USDT")
                 amountInUSD = Number(tx.value);
             else if (type === "ETH") {
                 const bnbPrice = await getBNBPrice(blockNumber);
