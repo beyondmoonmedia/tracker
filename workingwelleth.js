@@ -353,29 +353,34 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
 
 // Enhanced function to get token price and market cap with automatic tier progression
 async function getTokenPriceForTimestamp(timestamp, walletAddress) {
+    console.log(`\n🔍 === PRICE CALCULATION DEBUG START ===`);
+    console.log(`📝 Wallet Address: ${walletAddress}`);
+    console.log(`📝 Timestamp: ${timestamp || 'N/A (not used)'}`);
+    
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const query = new Parse.Query(TokenPrice);
 
     query.equalTo("walletAddress", walletAddress.toLowerCase());
     query.ascending("marketCap"); // Order by market cap ascending
 
-    console.log(`\nLooking up price for wallet ${walletAddress}`);
+    console.log(`🔍 Querying TokenPrice for wallet: ${walletAddress.toLowerCase()}`);
 
     const pricePeriods = await query.find({ useMasterKey: true });
 
     if (!pricePeriods || pricePeriods.length === 0) {
-        console.log(`No price period found for wallet ${walletAddress}`);
+        console.log(`❌ No price periods found for wallet ${walletAddress}`);
         return { price: 0, marketCap: 0 };
     }
 
-    console.log(`Found ${pricePeriods.length} price periods:`);
+    console.log(`✅ Found ${pricePeriods.length} price periods:`);
     pricePeriods.forEach((period, index) => {
-        console.log(`  ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
+        console.log(`  📊 ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
     });
 
     // Calculate total amountInUSD for this wallet
+    console.log(`\n💰 === CALCULATING TOTAL AMOUNT ===`);
     const totalAmountInUSD = await calculateTotalAmountInUSD(walletAddress);
-    console.log(`Total amountInUSD for wallet ${walletAddress}: $${totalAmountInUSD}`);
+    console.log(`💰 Total amountInUSD for wallet ${walletAddress}: $${totalAmountInUSD}`);
 
     // Find the appropriate price tier based on total amount
     let selectedPricePeriod = null;
@@ -383,21 +388,24 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
     // Sort price periods by market cap ascending to ensure proper tier selection
     pricePeriods.sort((a, b) => a.get("marketCap") - b.get("marketCap"));
 
-    console.log(`Sorted price periods by market cap:`);
+    console.log(`\n📈 === TIER SELECTION PROCESS ===`);
+    console.log(`📈 Sorted price periods by market cap:`);
     pricePeriods.forEach((period, index) => {
-        console.log(`  ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
+        console.log(`  📊 ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
     });
 
-    // Find the highest tier where total amount is still within the market cap
-    for (let i = pricePeriods.length - 1; i >= 0; i--) {
+    // Find the LOWEST tier where total amount is still within the market cap
+    console.log(`\n🎯 === SELECTING APPROPRIATE TIER ===`);
+    for (let i = 0; i < pricePeriods.length; i++) {
         const pricePeriod = pricePeriods[i];
         const marketCap = pricePeriod.get("marketCap");
         
-        console.log(`Checking tier ${i + 1}: Market Cap $${marketCap}`);
+        console.log(`🎯 Checking tier ${i + 1}: Market Cap $${marketCap}`);
         
         if (totalAmountInUSD < marketCap) {
             selectedPricePeriod = pricePeriod;
-            console.log(`✅ Selected tier: Total $${totalAmountInUSD} < Market Cap $${marketCap}`);
+            console.log(`✅ SELECTED TIER: Total $${totalAmountInUSD} < Market Cap $${marketCap}`);
+            console.log(`✅ Selected Price: $${pricePeriod.get("price")}`);
             break;
         } else {
             console.log(`❌ Skipping tier: Total $${totalAmountInUSD} >= Market Cap $${marketCap}`);
@@ -413,10 +421,12 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
     const price = selectedPricePeriod.get("price");
     const marketCap = selectedPricePeriod.get("marketCap");
     
-    console.log(`Selected price tier:`);
-    console.log(`- Price: $${price}`);
-    console.log(`- Market Cap: $${marketCap}`);
-    console.log(`- Total Amount: $${totalAmountInUSD}`);
+    console.log(`\n🎉 === FINAL RESULT ===`);
+    console.log(`🎉 Selected price tier:`);
+    console.log(`🎉 - Price: $${price}`);
+    console.log(`🎉 - Market Cap: $${marketCap}`);
+    console.log(`🎉 - Total Amount: $${totalAmountInUSD}`);
+    console.log(`🔍 === PRICE CALCULATION DEBUG END ===\n`);
 
     return { price, marketCap };
 }
@@ -424,11 +434,12 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
 // Function to calculate total amountInUSD for a wallet
 async function calculateTotalAmountInUSD(walletAddress) {
     try {
-        console.log(`\nCalculating total amountInUSD for wallet: ${walletAddress}`);
+        console.log(`\n💰 === CALCULATING TOTAL AMOUNT START ===`);
+        console.log(`💰 Wallet Address: ${walletAddress}`);
         
         // Normalize wallet address (remove 0x prefix if present)
         const normalizedAddress = walletAddress.toLowerCase().replace(/^0x/, '');
-        console.log(`Normalized address: ${normalizedAddress}`);
+        console.log(`💰 Normalized address: ${normalizedAddress}`);
         
         let totalAmount = 0;
         
@@ -439,9 +450,10 @@ async function calculateTotalAmountInUSD(walletAddress) {
             `Transaction_MZFrKi_SOL` // SOL handler as specified
         ];
         
-        console.log(`Checking transaction classes: ${transactionClasses.join(', ')}`);
+        console.log(`💰 Checking transaction classes: ${transactionClasses.join(', ')}`);
         
         for (const className of transactionClasses) {
+            console.log(`\n🔍 Checking class: ${className}`);
             try {
                 const Transaction = Parse.Object.extend(className);
                 const query = new Parse.Query(Transaction);
@@ -450,39 +462,42 @@ async function calculateTotalAmountInUSD(walletAddress) {
                 query.equalTo("walletAddress", walletAddress.toLowerCase());
                 const transactions = await query.find({ useMasterKey: true });
                 
-                console.log(`Found ${transactions.length} transactions in ${className}`);
+                console.log(`🔍 Found ${transactions.length} transactions in ${className} for address: ${walletAddress.toLowerCase()}`);
                 
                 for (const transaction of transactions) {
                     const amountInUSD = transaction.get("amountInUSD") || 0;
                     totalAmount += amountInUSD;
-                    console.log(`  - Transaction ${transaction.id}: $${amountInUSD}`);
+                    console.log(`  💵 Transaction ${transaction.id}: $${amountInUSD}`);
                 }
                 
                 // Also try querying with 0x prefix if no transactions found
                 if (transactions.length === 0 && !walletAddress.startsWith('0x')) {
-                    console.log(`Trying with 0x prefix for ${className}...`);
+                    console.log(`🔍 Trying with 0x prefix for ${className}...`);
                     const queryWithPrefix = new Parse.Query(Transaction);
                     queryWithPrefix.equalTo("walletAddress", `0x${walletAddress.toLowerCase()}`);
                     const transactionsWithPrefix = await queryWithPrefix.find({ useMasterKey: true });
                     
-                    console.log(`Found ${transactionsWithPrefix.length} transactions with 0x prefix in ${className}`);
+                    console.log(`🔍 Found ${transactionsWithPrefix.length} transactions with 0x prefix in ${className}`);
                     
                     for (const transaction of transactionsWithPrefix) {
                         const amountInUSD = transaction.get("amountInUSD") || 0;
                         totalAmount += amountInUSD;
-                        console.log(`  - Transaction ${transaction.id}: $${amountInUSD}`);
+                        console.log(`  💵 Transaction ${transaction.id}: $${amountInUSD}`);
                     }
                 }
             } catch (classError) {
-                console.log(`Class ${className} not found or error: ${classError.message}`);
+                console.log(`❌ Class ${className} not found or error: ${classError.message}`);
                 // Continue with other classes even if one fails
             }
         }
         
-        console.log(`Total amountInUSD for ${walletAddress}: $${totalAmount}`);
+        console.log(`\n💰 === CALCULATING TOTAL AMOUNT END ===`);
+        console.log(`💰 Total amountInUSD for ${walletAddress}: $${totalAmount}`);
+        console.log(`💰 === CALCULATING TOTAL AMOUNT END ===\n`);
+        
         return totalAmount;
     } catch (error) {
-        console.error("Error calculating total amountInUSD:", error);
+        console.error("❌ Error calculating total amountInUSD:", error);
         return 0;
     }
 }
@@ -520,17 +535,22 @@ async function getBonusForTimestamp(timestamp, walletAddress) {
 // Replace the existing calculateTokenRewards function
 async function calculateTokenRewards(usdAmount, walletAddress) {
     try {
-        console.log('\nStarting Token Reward Calculation:');
-        console.log(`USD Amount: $${usdAmount}`);
-        console.log(`Wallet Address: ${walletAddress}`);
+        console.log('\n🎁 === TOKEN REWARD CALCULATION START ===');
+        console.log(`🎁 USD Amount: $${usdAmount}`);
+        console.log(`🎁 Wallet Address: ${walletAddress}`);
 
         const priceData = await getTokenPriceForTimestamp(null, walletAddress);
         const tokenPrice = priceData.price;
         const marketCap = priceData.marketCap;
         const bonusPercentage = await getBonusForTimestamp(new Date(), walletAddress);
 
+        console.log(`🎁 Retrieved price data:`);
+        console.log(`🎁 - Token Price: $${tokenPrice}`);
+        console.log(`🎁 - Market Cap: $${marketCap}`);
+        console.log(`🎁 - Bonus Percentage: ${bonusPercentage * 100}%`);
+
         if (tokenPrice === 0) {
-            console.log('No token price available - 0 tokens awarded');
+            console.log('❌ No token price available - 0 tokens awarded');
             return { baseTokens: 0, bonusTokens: 0, totalTokens: 0, price: 0, marketCap: 0 };
         }
 
@@ -538,17 +558,15 @@ async function calculateTokenRewards(usdAmount, walletAddress) {
         const bonusTokens = parseFloat((baseTokens * bonusPercentage).toFixed(4));
         const totalTokens = parseFloat((baseTokens + bonusTokens).toFixed(4));
 
-        console.log('Token Reward Results:');
-        console.log(`- Token Price: $${tokenPrice}`);
-        console.log(`- Market Cap: $${marketCap}`);
-        console.log(`- Bonus Percentage: ${bonusPercentage * 100}%`);
-        console.log(`- Base Tokens: ${baseTokens}`);
-        console.log(`- Bonus Tokens: ${bonusTokens}`);
-        console.log(`- Total Tokens: ${totalTokens}`);
+        console.log(`🎁 Token calculations:`);
+        console.log(`🎁 - Base Tokens: ${baseTokens}`);
+        console.log(`🎁 - Bonus Tokens: ${bonusTokens}`);
+        console.log(`🎁 - Total Tokens: ${totalTokens}`);
+        console.log(`🎁 === TOKEN REWARD CALCULATION END ===\n`);
 
         return { baseTokens, bonusTokens, totalTokens, price: tokenPrice, marketCap };
     } catch (error) {
-        console.error("Error calculating token rewards:", error);
+        console.error("❌ Error calculating token rewards:", error);
         return { baseTokens: 0, bonusTokens: 0, totalTokens: 0, price: 0, marketCap: 0 };
     }
 }
@@ -1031,16 +1049,21 @@ async function processTransactionSOL(tx, className) {
         }
 
         if (amountInUSD > 0) {
+            console.log(`\n🚀 === PROCESSING SOL TRANSACTION ===`);
+            console.log(`🚀 Amount in USD: $${amountInUSD}`);
+            console.log(`🚀 Wallet Address: ${tx.walletAddress.toLowerCase()}`);
+            
             const tokenRewards = await calculateTokenRewards(amountInUSD, tx.walletAddress.toLowerCase());
             const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
 
-            console.log('\nFinal Transaction Details:');
-            console.log(`Token Price: $${tokenRewards.price}`);
-            console.log(`Market Cap: $${tokenRewards.marketCap}`);
-            console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
-            console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
-            console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
-            console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
+            console.log(`\n🚀 === SOL TRANSACTION FINAL DETAILS ===`);
+            console.log(`🚀 Token Price: $${tokenRewards.price}`);
+            console.log(`🚀 Market Cap: $${tokenRewards.marketCap}`);
+            console.log(`🚀 Bonus Percentage: ${bonusPercentage * 100}%`);
+            console.log(`🚀 Base Tokens: ${tokenRewards.baseTokens}`);
+            console.log(`🚀 Bonus Tokens: ${tokenRewards.bonusTokens}`);
+            console.log(`🚀 Total Tokens: ${tokenRewards.totalTokens}`);
+            console.log(`🚀 === SOL TRANSACTION FINAL DETAILS END ===\n`);
 
             // ✅ Save to Parse
             const transaction = new Transaction();
@@ -1146,14 +1169,22 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             }
         }
 
-        console.log(`\nProcessing ${type} transaction:`);
-        console.log(`Transaction Hash: ${tx.hash}`);
-        console.log(`Amount in USD: $${amountInUSD}`);
-        console.log(`Timestamp: ${timestamp}`);
-        console.log(`Wallet Address: ${fullWalletAddress}`);
+        console.log(`\n🚀 === PROCESSING ${type} TRANSACTION ===`);
+        console.log(`🚀 Transaction Hash: ${tx.hash}`);
+        console.log(`🚀 Amount in USD: $${amountInUSD}`);
+        console.log(`🚀 Timestamp: ${timestamp}`);
+        console.log(`🚀 Wallet Address: ${fullWalletAddress}`);
 
         // Calculate token rewards with the full wallet address
         tokenRewards = await calculateTokenRewards(amountInUSD, fullWalletAddress);
+        
+        console.log(`\n🚀 === ${type} TRANSACTION FINAL DETAILS ===`);
+        console.log(`🚀 Token Price: $${tokenRewards.price}`);
+        console.log(`🚀 Market Cap: $${tokenRewards.marketCap}`);
+        console.log(`🚀 Base Tokens: ${tokenRewards.baseTokens}`);
+        console.log(`🚀 Bonus Tokens: ${tokenRewards.bonusTokens}`);
+        console.log(`🚀 Total Tokens: ${tokenRewards.totalTokens}`);
+        console.log(`🚀 === ${type} TRANSACTION FINAL DETAILS END ===\n`);
 
         // Save transaction if USD amount is valid
         if (amountInUSD > 0) {
@@ -1339,6 +1370,51 @@ app.get('/api/debug-price/:walletAddress', async (req, res) => {
     } catch (error) {
         console.error('Error in debug price calculation:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Enhanced debug endpoint with detailed logging
+app.get('/api/debug-detailed/:walletAddress', async (req, res) => {
+    try {
+        const { walletAddress } = req.params;
+        
+        console.log(`\n🔍 === DETAILED DEBUG START ===`);
+        console.log(`🔍 Wallet Address: ${walletAddress}`);
+        
+        // Test TokenPrice query
+        const TokenPrice = Parse.Object.extend("TokenPrice");
+        const query = new Parse.Query(TokenPrice);
+        query.equalTo("walletAddress", walletAddress.toLowerCase());
+        query.ascending("marketCap");
+        
+        const pricePeriods = await query.find({ useMasterKey: true });
+        console.log(`🔍 Found ${pricePeriods.length} price periods`);
+        
+        // Test transaction calculation
+        const totalAmount = await calculateTotalAmountInUSD(walletAddress);
+        console.log(`🔍 Total amount calculated: $${totalAmount}`);
+        
+        // Test price selection
+        const result = await getTokenPriceForTimestamp(null, walletAddress);
+        
+        console.log(`🔍 === DETAILED DEBUG END ===\n`);
+        
+        res.json({
+            success: true,
+            walletAddress,
+            pricePeriods: pricePeriods.map(p => ({
+                price: p.get("price"),
+                marketCap: p.get("marketCap")
+            })),
+            totalAmount,
+            selectedResult: result
+        });
+    } catch (error) {
+        console.error('Detailed debug error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
