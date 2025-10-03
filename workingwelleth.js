@@ -193,6 +193,7 @@ async function setupWalletConfig(walletAddress, network) {
                 .addDate('timestamp')
                 .addNumber('amountInUSD')
                 .addNumber('tokenPrice')
+                .addNumber('marketCap')
                 .addNumber('bonusPercentage')
                 .addBoolean('hasBonus')
                 .addNumber('baseTokens')
@@ -350,7 +351,7 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
     }
 }
 
-// Replace the existing getTokenPriceForTimestamp function
+// Enhanced function to get token price and market cap with automatic tier progression
 async function getTokenPriceForTimestamp(timestamp, walletAddress) {
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const query = new Parse.Query(TokenPrice);
@@ -360,19 +361,75 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
     query.greaterThanOrEqualTo("endDate", txDate);
     query.lessThanOrEqualTo("startDate", txDate);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
+    query.ascending("marketCap"); // Order by market cap ascending
 
     console.log(`\nLooking up price for wallet ${walletAddress} at ${txDate}`);
 
-    const pricePeriod = await query.first({ useMasterKey: true });
+    const pricePeriods = await query.find({ useMasterKey: true });
 
-    if (!pricePeriod) {
+    if (!pricePeriods || pricePeriods.length === 0) {
         console.log(`No price period found for wallet ${walletAddress} at timestamp ${txDate}`);
-        return 0;
+        return { price: 0, marketCap: 0 };
     }
 
-    const price = pricePeriod.get("price");
-    console.log(`Found price: $${price}`);
-    return price;
+    // Calculate total amountInUSD for this wallet
+    const totalAmountInUSD = await calculateTotalAmountInUSD(walletAddress);
+    console.log(`Total amountInUSD for wallet ${walletAddress}: $${totalAmountInUSD}`);
+
+    // Find the appropriate price tier based on total amount
+    let selectedPricePeriod = pricePeriods[0]; // Start with the lowest market cap
+
+    for (const pricePeriod of pricePeriods) {
+        const marketCap = pricePeriod.get("marketCap");
+        console.log(`Checking price tier with market cap: $${marketCap}`);
+        
+        if (totalAmountInUSD < marketCap) {
+            selectedPricePeriod = pricePeriod;
+            break;
+        }
+    }
+
+    const price = selectedPricePeriod.get("price");
+    const marketCap = selectedPricePeriod.get("marketCap");
+    
+    console.log(`Selected price tier:`);
+    console.log(`- Price: $${price}`);
+    console.log(`- Market Cap: $${marketCap}`);
+    console.log(`- Total Amount: $${totalAmountInUSD}`);
+
+    return { price, marketCap };
+}
+
+// Function to calculate total amountInUSD for a wallet
+async function calculateTotalAmountInUSD(walletAddress) {
+    try {
+        // Get all transaction classes for this wallet
+        const WalletConfig = Parse.Object.extend("WalletConfig");
+        const walletQuery = new Parse.Query(WalletConfig);
+        walletQuery.equalTo("walletAddress", walletAddress.toLowerCase());
+        const walletConfigs = await walletQuery.find({ useMasterKey: true });
+
+        let totalAmount = 0;
+
+        for (const config of walletConfigs) {
+            const className = config.get("transactionClassName");
+            const Transaction = Parse.Object.extend(className);
+            const query = new Parse.Query(Transaction);
+            
+            query.equalTo("walletAddress", walletAddress.toLowerCase());
+            const transactions = await query.find({ useMasterKey: true });
+
+            for (const transaction of transactions) {
+                const amountInUSD = transaction.get("amountInUSD") || 0;
+                totalAmount += amountInUSD;
+            }
+        }
+
+        return totalAmount;
+    } catch (error) {
+        console.error("Error calculating total amountInUSD:", error);
+        return 0;
+    }
 }
 
 // Replace the existing getBonusForTimestamp function
@@ -413,12 +470,14 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
         console.log(`Timestamp: ${timestamp}`);
         console.log(`Wallet Address: ${walletAddress}`);
 
-        const tokenPrice = await getTokenPriceForTimestamp(timestamp, walletAddress);
+        const priceData = await getTokenPriceForTimestamp(timestamp, walletAddress);
+        const tokenPrice = priceData.price;
+        const marketCap = priceData.marketCap;
         const bonusPercentage = await getBonusForTimestamp(timestamp, walletAddress);
 
         if (tokenPrice === 0) {
             console.log('No token price available - 0 tokens awarded');
-            return { baseTokens: 0, bonusTokens: 0, totalTokens: 0 };
+            return { baseTokens: 0, bonusTokens: 0, totalTokens: 0, price: 0, marketCap: 0 };
         }
 
         const baseTokens = parseFloat((usdAmount / tokenPrice).toFixed(4));
@@ -427,15 +486,16 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
 
         console.log('Token Reward Results:');
         console.log(`- Token Price: $${tokenPrice}`);
+        console.log(`- Market Cap: $${marketCap}`);
         console.log(`- Bonus Percentage: ${bonusPercentage * 100}%`);
         console.log(`- Base Tokens: ${baseTokens}`);
         console.log(`- Bonus Tokens: ${bonusTokens}`);
         console.log(`- Total Tokens: ${totalTokens}`);
 
-        return { baseTokens, bonusTokens, totalTokens };
+        return { baseTokens, bonusTokens, totalTokens, price: tokenPrice, marketCap };
     } catch (error) {
         console.error("Error calculating token rewards:", error);
-        return { baseTokens: 0, bonusTokens: 0, totalTokens: 0 };
+        return { baseTokens: 0, bonusTokens: 0, totalTokens: 0, price: 0, marketCap: 0 };
     }
 }
 
@@ -935,11 +995,11 @@ async function processTransactionSOL(tx, className) {
 
         if (amountInUSD > 0) {
             const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress.toLowerCase());
-            const tokenPrice = await getTokenPriceForTimestamp(timestamp, tx.walletAddress.toLowerCase());
             const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
 
             console.log('\nFinal Transaction Details:');
-            console.log(`Token Price: $${tokenPrice}`);
+            console.log(`Token Price: $${tokenRewards.price}`);
+            console.log(`Market Cap: $${tokenRewards.marketCap}`);
             console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
             console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
             console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
@@ -955,7 +1015,8 @@ async function processTransactionSOL(tx, className) {
                 timestamp: timestamp,
                 amountInUSD: amountInUSD,
                 amountInToken: maxDiffInSOL,
-                tokenPrice: tokenPrice,
+                tokenPrice: tokenRewards.price,
+                marketCap: tokenRewards.marketCap,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
                 baseTokens: tokenRewards.baseTokens,
@@ -1059,11 +1120,11 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
 
         // Save transaction if USD amount is valid
         if (amountInUSD > 0) {
-            const tokenPrice = await getTokenPriceForTimestamp(timestamp, fullWalletAddress);
             const bonusPercentage = await getBonusForTimestamp(timestamp, fullWalletAddress);
 
             console.log('\nFinal Transaction Details:');
-            console.log(`Token Price: $${tokenPrice}`);
+            console.log(`Token Price: $${tokenRewards.price}`);
+            console.log(`Market Cap: $${tokenRewards.marketCap}`);
             console.log(`Bonus Percentage: ${bonusPercentage * 100}%`);
             console.log(`Base Tokens: ${tokenRewards.baseTokens}`);
             console.log(`Bonus Tokens: ${tokenRewards.bonusTokens}`);
@@ -1082,7 +1143,8 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 timestamp: timestamp,
                 amountInUSD: amountInUSD,
                 amountInToken: tx.value,
-                tokenPrice: tokenPrice,
+                tokenPrice: tokenRewards.price,
+                marketCap: tokenRewards.marketCap,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
                 baseTokens: tokenRewards.baseTokens,
