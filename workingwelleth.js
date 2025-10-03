@@ -243,7 +243,7 @@ function validateISODate(dateString) {
 }
 
 // Add these new functions for managing price and bonus periods
-async function addPricePeriod(walletAddress, price, startDate, endDate, projectName = null) {
+async function addPricePeriod(walletAddress, price, startDate, endDate, projectName = null, marketCap = null) {
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const price_entry = new TokenPrice();
 
@@ -254,6 +254,9 @@ async function addPricePeriod(walletAddress, price, startDate, endDate, projectN
     console.log(`\nAdding new price period for wallet ${walletAddress}:`);
     console.log(`Price: $${price}`);
     console.log(`Project: ${projectName || 'Default'}`);
+    if (marketCap !== null && marketCap !== undefined) {
+        console.log(`Market Cap: $${marketCap}`);
+    }
     console.log(`Start Date: ${formattedStartDate}`);
     console.log(`End Date: ${formattedEndDate}`);
 
@@ -267,6 +270,9 @@ async function addPricePeriod(walletAddress, price, startDate, endDate, projectN
         
         if (projectName) {
             priceData.projectName = projectName;
+        }
+        if (marketCap !== null && marketCap !== undefined) {
+            priceData.marketCap = parseFloat(marketCap);
         }
         
         await price_entry.save(priceData, { useMasterKey: true });
@@ -316,13 +322,13 @@ async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate
 }
 
 // Update setupWalletPricingAndBonus to accept date ranges and project
-async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus = 0, startDate, endDate, projectName = null) {
+async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus = 0, startDate, endDate, projectName = null, marketCap = null) {
     console.log(`\nSetting up pricing and bonus for wallet ${walletAddress}`);
     console.log(`Initial price: $${initialPrice}`);
     console.log(`Initial bonus: ${initialBonus * 100}%`);
     console.log(`Project: ${projectName || 'Default'}`);
 
-    await addPricePeriod(walletAddress, initialPrice, startDate, endDate, projectName);
+    await addPricePeriod(walletAddress, initialPrice, startDate, endDate, projectName, marketCap);
     await addBonusPeriod(walletAddress, initialBonus, startDate, endDate, projectName);
 
     // Verify the setup
@@ -351,7 +357,7 @@ async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBo
 }
 
 // Update setupWalletTracking to accept date ranges and project
-async function setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName = null) {
+async function setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName = null, marketCap = null) {
     try {
         console.log(`\nSetting up wallet tracking for ${walletAddress}`);
         console.log(`Initial price: $${initialPrice}`);
@@ -359,7 +365,7 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
         console.log(`Project: ${projectName || 'Default'}`);
 
         const config = await setupWalletConfig(walletAddress.toLowerCase(), network, projectName);
-        await setupWalletPricingAndBonus(walletAddress.toLowerCase(), initialPrice, initialBonus, startDate, endDate, projectName);
+        await setupWalletPricingAndBonus(walletAddress.toLowerCase(), initialPrice, initialBonus, startDate, endDate, projectName, marketCap);
 
         // Verify the setup worked
         const TokenPrice = Parse.Object.extend("TokenPrice");
@@ -1038,6 +1044,12 @@ httpsServer.listen(HTTPS_PORT, () => {
     console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
 });
 
+// Add HTTP server for local development
+const HTTP_PORT = 3000;
+app.listen(HTTP_PORT, () => {
+    console.log(`HTTP Server running on port ${HTTP_PORT}`);
+});
+
 const io = socketIo(httpsServer, {
     cors: {
         origin: "http://localhost:3000", // Allow your React app's origin
@@ -1417,11 +1429,11 @@ async function addReferral(walletAddress, refAddress) {
 
 // Add this new endpoint for setting up wallet tracking
 app.post('/api/setupWalletTracking', async (req, res) => {
-    const { walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName } = req.body;
+    const { walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName, marketCap } = req.body;
 
     try {
         // Call the setupWalletTracking function with the provided parameters
-        const config = await setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName);
+        const config = await setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName, marketCap);
         res.status(200).json({ message: 'Wallet tracking setup successfully', config });
     } catch (error) {
         console.error('Error in setupWalletTracking:', error);
