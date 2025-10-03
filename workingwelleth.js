@@ -356,37 +356,58 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const query = new Parse.Query(TokenPrice);
 
-    const txDate = timestamp instanceof Date ? timestamp : new Date(timestamp);
-
-    query.greaterThanOrEqualTo("endDate", txDate);
-    query.lessThanOrEqualTo("startDate", txDate);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
     query.ascending("marketCap"); // Order by market cap ascending
 
-    console.log(`\nLooking up price for wallet ${walletAddress} at ${txDate}`);
+    console.log(`\nLooking up price for wallet ${walletAddress}`);
 
     const pricePeriods = await query.find({ useMasterKey: true });
 
     if (!pricePeriods || pricePeriods.length === 0) {
-        console.log(`No price period found for wallet ${walletAddress} at timestamp ${txDate}`);
+        console.log(`No price period found for wallet ${walletAddress}`);
         return { price: 0, marketCap: 0 };
     }
+
+    console.log(`Found ${pricePeriods.length} price periods:`);
+    pricePeriods.forEach((period, index) => {
+        console.log(`  ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
+    });
 
     // Calculate total amountInUSD for this wallet
     const totalAmountInUSD = await calculateTotalAmountInUSD(walletAddress);
     console.log(`Total amountInUSD for wallet ${walletAddress}: $${totalAmountInUSD}`);
 
     // Find the appropriate price tier based on total amount
-    let selectedPricePeriod = pricePeriods[0]; // Start with the lowest market cap
+    let selectedPricePeriod = null;
 
-    for (const pricePeriod of pricePeriods) {
+    // Sort price periods by market cap ascending to ensure proper tier selection
+    pricePeriods.sort((a, b) => a.get("marketCap") - b.get("marketCap"));
+
+    console.log(`Sorted price periods by market cap:`);
+    pricePeriods.forEach((period, index) => {
+        console.log(`  ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
+    });
+
+    // Find the highest tier where total amount is still within the market cap
+    for (let i = pricePeriods.length - 1; i >= 0; i--) {
+        const pricePeriod = pricePeriods[i];
         const marketCap = pricePeriod.get("marketCap");
-        console.log(`Checking price tier with market cap: $${marketCap}`);
+        
+        console.log(`Checking tier ${i + 1}: Market Cap $${marketCap}`);
         
         if (totalAmountInUSD < marketCap) {
             selectedPricePeriod = pricePeriod;
+            console.log(`✅ Selected tier: Total $${totalAmountInUSD} < Market Cap $${marketCap}`);
             break;
+        } else {
+            console.log(`❌ Skipping tier: Total $${totalAmountInUSD} >= Market Cap $${marketCap}`);
         }
+    }
+    
+    // If no tier found (total amount exceeds all market caps), use the highest tier
+    if (!selectedPricePeriod) {
+        selectedPricePeriod = pricePeriods[pricePeriods.length - 1];
+        console.log(`⚠️ Using highest tier: Total $${totalAmountInUSD} exceeds all market caps`);
     }
 
     const price = selectedPricePeriod.get("price");
@@ -403,28 +424,62 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
 // Function to calculate total amountInUSD for a wallet
 async function calculateTotalAmountInUSD(walletAddress) {
     try {
-        // Get all transaction classes for this wallet
-        const WalletConfig = Parse.Object.extend("WalletConfig");
-        const walletQuery = new Parse.Query(WalletConfig);
-        walletQuery.equalTo("walletAddress", walletAddress.toLowerCase());
-        const walletConfigs = await walletQuery.find({ useMasterKey: true });
-
+        console.log(`\nCalculating total amountInUSD for wallet: ${walletAddress}`);
+        
+        // Normalize wallet address (remove 0x prefix if present)
+        const normalizedAddress = walletAddress.toLowerCase().replace(/^0x/, '');
+        console.log(`Normalized address: ${normalizedAddress}`);
+        
         let totalAmount = 0;
-
-        for (const config of walletConfigs) {
-            const className = config.get("transactionClassName");
-            const Transaction = Parse.Object.extend(className);
-            const query = new Parse.Query(Transaction);
-            
-            query.equalTo("walletAddress", walletAddress.toLowerCase());
-            const transactions = await query.find({ useMasterKey: true });
-
-            for (const transaction of transactions) {
-                const amountInUSD = transaction.get("amountInUSD") || 0;
-                totalAmount += amountInUSD;
+        
+        // Define the transaction classes to check based on the wallet address
+        const transactionClasses = [
+            `Transaction_${normalizedAddress.substring(0, 6)}_BSC`,
+            `Transaction_${normalizedAddress.substring(0, 6)}_ETH`,
+            `Transaction_MZFrKi_SOL` // SOL handler as specified
+        ];
+        
+        console.log(`Checking transaction classes: ${transactionClasses.join(', ')}`);
+        
+        for (const className of transactionClasses) {
+            try {
+                const Transaction = Parse.Object.extend(className);
+                const query = new Parse.Query(Transaction);
+                
+                // Query by walletAddress field - try both with and without 0x prefix
+                query.equalTo("walletAddress", walletAddress.toLowerCase());
+                const transactions = await query.find({ useMasterKey: true });
+                
+                console.log(`Found ${transactions.length} transactions in ${className}`);
+                
+                for (const transaction of transactions) {
+                    const amountInUSD = transaction.get("amountInUSD") || 0;
+                    totalAmount += amountInUSD;
+                    console.log(`  - Transaction ${transaction.id}: $${amountInUSD}`);
+                }
+                
+                // Also try querying with 0x prefix if no transactions found
+                if (transactions.length === 0 && !walletAddress.startsWith('0x')) {
+                    console.log(`Trying with 0x prefix for ${className}...`);
+                    const queryWithPrefix = new Parse.Query(Transaction);
+                    queryWithPrefix.equalTo("walletAddress", `0x${walletAddress.toLowerCase()}`);
+                    const transactionsWithPrefix = await queryWithPrefix.find({ useMasterKey: true });
+                    
+                    console.log(`Found ${transactionsWithPrefix.length} transactions with 0x prefix in ${className}`);
+                    
+                    for (const transaction of transactionsWithPrefix) {
+                        const amountInUSD = transaction.get("amountInUSD") || 0;
+                        totalAmount += amountInUSD;
+                        console.log(`  - Transaction ${transaction.id}: $${amountInUSD}`);
+                    }
+                }
+            } catch (classError) {
+                console.log(`Class ${className} not found or error: ${classError.message}`);
+                // Continue with other classes even if one fails
             }
         }
-
+        
+        console.log(`Total amountInUSD for ${walletAddress}: $${totalAmount}`);
         return totalAmount;
     } catch (error) {
         console.error("Error calculating total amountInUSD:", error);
@@ -463,17 +518,16 @@ async function getBonusForTimestamp(timestamp, walletAddress) {
 }
 
 // Replace the existing calculateTokenRewards function
-async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
+async function calculateTokenRewards(usdAmount, walletAddress) {
     try {
         console.log('\nStarting Token Reward Calculation:');
         console.log(`USD Amount: $${usdAmount}`);
-        console.log(`Timestamp: ${timestamp}`);
         console.log(`Wallet Address: ${walletAddress}`);
 
-        const priceData = await getTokenPriceForTimestamp(timestamp, walletAddress);
+        const priceData = await getTokenPriceForTimestamp(null, walletAddress);
         const tokenPrice = priceData.price;
         const marketCap = priceData.marketCap;
-        const bonusPercentage = await getBonusForTimestamp(timestamp, walletAddress);
+        const bonusPercentage = await getBonusForTimestamp(new Date(), walletAddress);
 
         if (tokenPrice === 0) {
             console.log('No token price available - 0 tokens awarded');
@@ -533,32 +587,26 @@ app.post('/add-referral', async (req, res) => {
     res.json(result);
 });
 
-// Add endpoint for updating price and time periods
+// Add endpoint for updating price and market cap
 app.post('/api/update-price', async (req, res) => {
-    const { walletAddress, price, marketCap, startDate, endDate } = req.body;
+    const { walletAddress, price, marketCap } = req.body;
 
-    if (!walletAddress || !price || !marketCap || !startDate || !endDate) {
-        return res.status(400).json({ success: false, error: "Missing required fields" });
+    if (!walletAddress || !price || !marketCap) {
+        return res.status(400).json({ success: false, error: "Missing required fields: walletAddress, price, marketCap" });
     }
 
     try {
-        // Validate dates
-        const formattedStartDate = validateISODate(startDate);
-        const formattedEndDate = validateISODate(endDate);
-
-        // Create new price period
+        // Create new price entry
         const TokenPrice = Parse.Object.extend("TokenPrice");
         const priceEntry = new TokenPrice();
         
         await priceEntry.save({
             walletAddress: walletAddress.toLowerCase(),
             price: parseFloat(price),
-            marketCap: parseFloat(marketCap),
-            startDate: new Date(formattedStartDate),
-            endDate: new Date(formattedEndDate)
+            marketCap: parseFloat(marketCap)
         }, { useMasterKey: true });
 
-        res.json({ success: true, message: 'Price period updated successfully', priceEntry });
+        res.json({ success: true, message: 'Price updated successfully', priceEntry });
     } catch (error) {
         console.error('Error updating price:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -569,22 +617,13 @@ app.post('/api/update-price', async (req, res) => {
 app.get('/api/current-price/:walletAddress', async (req, res) => {
     try {
         const { walletAddress } = req.params;
-        const query = new Parse.Query("TokenPrice");
-        query.equalTo("walletAddress", walletAddress.toLowerCase());
-        query.descending("createdAt");
-        const result = await query.first({ useMasterKey: true });
+        const priceData = await getTokenPriceForTimestamp(null, walletAddress);
         
-        if (result) {
-            res.json({
-                success: true,
-                price: result.get("price"),
-                marketCap: result.get("marketCap"),
-                startDate: result.get("startDate"),
-                endDate: result.get("endDate")
-            });
-        } else {
-            res.json({ success: false, message: 'No price data found' });
-        }
+        res.json({
+            success: true,
+            price: priceData.price,
+            marketCap: priceData.marketCap
+        });
     } catch (error) {
         console.error('Error fetching current price:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -597,15 +636,13 @@ app.get('/api/price-history/:walletAddress', async (req, res) => {
         const { walletAddress } = req.params;
         const query = new Parse.Query("TokenPrice");
         query.equalTo("walletAddress", walletAddress.toLowerCase());
-        query.descending("createdAt");
+        query.ascending("marketCap");
         const results = await query.find({ useMasterKey: true });
         
         const priceHistory = results.map(price => ({
             id: price.id,
             price: price.get("price"),
             marketCap: price.get("marketCap"),
-            startDate: price.get("startDate"),
-            endDate: price.get("endDate"),
             createdAt: price.get("createdAt")
         }));
 
@@ -994,7 +1031,7 @@ async function processTransactionSOL(tx, className) {
         }
 
         if (amountInUSD > 0) {
-            const tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, tx.walletAddress.toLowerCase());
+            const tokenRewards = await calculateTokenRewards(amountInUSD, tx.walletAddress.toLowerCase());
             const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
 
             console.log('\nFinal Transaction Details:');
@@ -1116,7 +1153,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         console.log(`Wallet Address: ${fullWalletAddress}`);
 
         // Calculate token rewards with the full wallet address
-        tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, fullWalletAddress);
+        tokenRewards = await calculateTokenRewards(amountInUSD, fullWalletAddress);
 
         // Save transaction if USD amount is valid
         if (amountInUSD > 0) {
@@ -1282,6 +1319,27 @@ app.post('/api/setupWalletTracking', async (req, res) => {
         res.status(500).json({ error: 'Failed to setup wallet tracking' });
     }
     console.log("visited")
+});
+
+// Debug endpoint to test price calculation
+app.get('/api/debug-price/:walletAddress', async (req, res) => {
+    try {
+        const { walletAddress } = req.params;
+        console.log(`\n=== DEBUG PRICE CALCULATION FOR ${walletAddress} ===`);
+        
+        const priceData = await getTokenPriceForTimestamp(null, walletAddress);
+        const totalAmount = await calculateTotalAmountInUSD(walletAddress);
+        
+        res.json({
+            walletAddress,
+            totalAmountInUSD: totalAmount,
+            selectedPrice: priceData.price,
+            selectedMarketCap: priceData.marketCap
+        });
+    } catch (error) {
+        console.error('Error in debug price calculation:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Make sure to export the app if you're using it in other files
