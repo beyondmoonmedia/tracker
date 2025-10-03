@@ -156,7 +156,7 @@ async function getSolBlockTime(slot) {
 
 
 // Add these new functions after the constants
-async function setupWalletConfig(walletAddress, network) {
+async function setupWalletConfig(walletAddress, network, projectName = null) {
     const WalletConfig = Parse.Object.extend("WalletConfig");
 
     // Create a unique class name for this wallet
@@ -171,17 +171,26 @@ async function setupWalletConfig(walletAddress, network) {
     const query = new Parse.Query(WalletConfig);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
     query.equalTo("network", net);
+    if (projectName) {
+        query.equalTo("projectName", projectName);
+    }
     let config = await query.first({ useMasterKey: true });
     console.log(walletClassName)
     if (!config) {
         // Create new wallet config
         config = new WalletConfig();
-        await config.save({
+        const configData = {
             walletAddress: walletAddress.toLowerCase(),
             transactionClassName: walletClassName,
             network: net,
             isActive: true
-        }, { useMasterKey: true });
+        };
+        
+        if (projectName) {
+            configData.projectName = projectName;
+        }
+        
+        await config.save(configData, { useMasterKey: true });
 
         try {
             // Attempt to create new Transaction class for this wallet
@@ -194,6 +203,7 @@ async function setupWalletConfig(walletAddress, network) {
                 .addNumber('amountInUSD')
                 .addNumber('tokenPrice')
                 .addNumber('marketCap')
+                .addString('projectName')
                 .addNumber('bonusPercentage')
                 .addBoolean('hasBonus')
                 .addNumber('baseTokens')
@@ -233,7 +243,7 @@ function validateISODate(dateString) {
 }
 
 // Add these new functions for managing price and bonus periods
-async function addPricePeriod(walletAddress, price, startDate, endDate) {
+async function addPricePeriod(walletAddress, price, startDate, endDate, projectName = null) {
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const price_entry = new TokenPrice();
 
@@ -243,16 +253,23 @@ async function addPricePeriod(walletAddress, price, startDate, endDate) {
 
     console.log(`\nAdding new price period for wallet ${walletAddress}:`);
     console.log(`Price: $${price}`);
+    console.log(`Project: ${projectName || 'Default'}`);
     console.log(`Start Date: ${formattedStartDate}`);
     console.log(`End Date: ${formattedEndDate}`);
 
     try {
-        await price_entry.save({
+        const priceData = {
             walletAddress: walletAddress.toLowerCase(),
             price: price,
             startDate: new Date(formattedStartDate),
             endDate: new Date(formattedEndDate)
-        }, { useMasterKey: true });
+        };
+        
+        if (projectName) {
+            priceData.projectName = projectName;
+        }
+        
+        await price_entry.save(priceData, { useMasterKey: true });
 
         console.log('Price period added successfully');
         return price_entry;
@@ -262,7 +279,7 @@ async function addPricePeriod(walletAddress, price, startDate, endDate) {
     }
 }
 
-async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate) {
+async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate, projectName = null) {
     const TokenBonus = Parse.Object.extend("TokenBonus");
     const bonus_entry = new TokenBonus();
 
@@ -272,16 +289,23 @@ async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate
 
     console.log(`\nAdding new bonus period for wallet ${walletAddress}:`);
     console.log(`Bonus: ${bonusPercentage * 100}%`);
+    console.log(`Project: ${projectName || 'Default'}`);
     console.log(`Start Date: ${formattedStartDate}`);
     console.log(`End Date: ${formattedEndDate}`);
 
     try {
-        await bonus_entry.save({
+        const bonusData = {
             walletAddress: walletAddress.toLowerCase(),
             bonusPercentage: bonusPercentage,
             startDate: new Date(formattedStartDate),
             endDate: new Date(formattedEndDate)
-        }, { useMasterKey: true });
+        };
+        
+        if (projectName) {
+            bonusData.projectName = projectName;
+        }
+        
+        await bonus_entry.save(bonusData, { useMasterKey: true });
 
         console.log('Bonus period added successfully');
         return bonus_entry;
@@ -291,25 +315,33 @@ async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate
     }
 }
 
-// Update setupWalletPricingAndBonus to accept date ranges
-async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus = 0, startDate, endDate) {
+// Update setupWalletPricingAndBonus to accept date ranges and project
+async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus = 0, startDate, endDate, projectName = null) {
     console.log(`\nSetting up pricing and bonus for wallet ${walletAddress}`);
     console.log(`Initial price: $${initialPrice}`);
     console.log(`Initial bonus: ${initialBonus * 100}%`);
+    console.log(`Project: ${projectName || 'Default'}`);
 
-    await addPricePeriod(walletAddress, initialPrice, startDate, endDate);
-    await addBonusPeriod(walletAddress, initialBonus, startDate, endDate);
+    await addPricePeriod(walletAddress, initialPrice, startDate, endDate, projectName);
+    await addBonusPeriod(walletAddress, initialBonus, startDate, endDate, projectName);
 
     // Verify the setup
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const TokenBonus = Parse.Object.extend("TokenBonus");
 
-    const savedPrice = await new Parse.Query(TokenPrice)
-        .equalTo("walletAddress", walletAddress.toLowerCase())
-        .first({ useMasterKey: true });
-    const savedBonus = await new Parse.Query(TokenBonus)
-        .equalTo("walletAddress", walletAddress.toLowerCase())
-        .first({ useMasterKey: true });
+    const priceQuery = new Parse.Query(TokenPrice)
+        .equalTo("walletAddress", walletAddress.toLowerCase());
+    if (projectName) {
+        priceQuery.equalTo("projectName", projectName);
+    }
+    const savedPrice = await priceQuery.first({ useMasterKey: true });
+    
+    const bonusQuery = new Parse.Query(TokenBonus)
+        .equalTo("walletAddress", walletAddress.toLowerCase());
+    if (projectName) {
+        bonusQuery.equalTo("projectName", projectName);
+    }
+    const savedBonus = await bonusQuery.first({ useMasterKey: true });
 
     console.log('\nVerifying setup:');
     console.log(`Saved price: $${savedPrice.get("price")}`);
@@ -318,26 +350,34 @@ async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBo
     console.log(`Bonus period: ${savedBonus.get("startDate").toISOString()}`);
 }
 
-// Update setupWalletTracking to accept date ranges
-async function setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate) {
+// Update setupWalletTracking to accept date ranges and project
+async function setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName = null) {
     try {
         console.log(`\nSetting up wallet tracking for ${walletAddress}`);
         console.log(`Initial price: $${initialPrice}`);
         console.log(`Initial bonus: ${initialBonus * 100}%`);
+        console.log(`Project: ${projectName || 'Default'}`);
 
-        const config = await setupWalletConfig(walletAddress.toLowerCase(), network);
-        await setupWalletPricingAndBonus(walletAddress.toLowerCase(), initialPrice, initialBonus, startDate, endDate);
+        const config = await setupWalletConfig(walletAddress.toLowerCase(), network, projectName);
+        await setupWalletPricingAndBonus(walletAddress.toLowerCase(), initialPrice, initialBonus, startDate, endDate, projectName);
 
         // Verify the setup worked
         const TokenPrice = Parse.Object.extend("TokenPrice");
         const TokenBonus = Parse.Object.extend("TokenBonus");
 
-        const priceCheck = await new Parse.Query(TokenPrice)
-            .equalTo("walletAddress", walletAddress.toLowerCase())
-            .first({ useMasterKey: true });
-        const bonusCheck = await new Parse.Query(TokenBonus)
-            .equalTo("walletAddress", walletAddress.toLowerCase())
-            .first({ useMasterKey: true });
+        const priceQuery = new Parse.Query(TokenPrice)
+            .equalTo("walletAddress", walletAddress.toLowerCase());
+        if (projectName) {
+            priceQuery.equalTo("projectName", projectName);
+        }
+        const priceCheck = await priceQuery.first({ useMasterKey: true });
+        
+        const bonusQuery = new Parse.Query(TokenBonus)
+            .equalTo("walletAddress", walletAddress.toLowerCase());
+        if (projectName) {
+            bonusQuery.equalTo("projectName", projectName);
+        }
+        const bonusCheck = await bonusQuery.first({ useMasterKey: true });
 
         console.log('\nVerifying wallet setup:');
         console.log(`Price setup: ${priceCheck ? 'Success' : 'Failed'}`);
@@ -352,35 +392,39 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
 }
 
 // Enhanced function to get token price and market cap with automatic tier progression
-async function getTokenPriceForTimestamp(timestamp, walletAddress) {
+async function getTokenPriceForTimestamp(timestamp, walletAddress, projectName = null) {
     console.log(`\n🔍 === PRICE CALCULATION DEBUG START ===`);
     console.log(`📝 Wallet Address: ${walletAddress}`);
+    console.log(`📝 Project Name: ${projectName || 'All Projects'}`);
     console.log(`📝 Timestamp: ${timestamp || 'N/A (not used)'}`);
     
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const query = new Parse.Query(TokenPrice);
 
     query.equalTo("walletAddress", walletAddress.toLowerCase());
+    if (projectName) {
+        query.equalTo("projectName", projectName);
+    }
     query.ascending("marketCap"); // Order by market cap ascending
 
-    console.log(`🔍 Querying TokenPrice for wallet: ${walletAddress.toLowerCase()}`);
+    console.log(`🔍 Querying TokenPrice for wallet: ${walletAddress.toLowerCase()}, project: ${projectName || 'All'}`);
 
     const pricePeriods = await query.find({ useMasterKey: true });
 
     if (!pricePeriods || pricePeriods.length === 0) {
-        console.log(`❌ No price periods found for wallet ${walletAddress}`);
+        console.log(`❌ No price periods found for wallet ${walletAddress}${projectName ? ` and project ${projectName}` : ''}`);
         return { price: 0, marketCap: 0 };
     }
 
     console.log(`✅ Found ${pricePeriods.length} price periods:`);
     pricePeriods.forEach((period, index) => {
-        console.log(`  📊 ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}`);
+        console.log(`  📊 ${index + 1}. Price: $${period.get("price")}, Market Cap: $${period.get("marketCap")}, Project: ${period.get("projectName")}`);
     });
 
-    // Calculate total amountInUSD for this wallet
+    // Calculate total amountInUSD for this wallet and project
     console.log(`\n💰 === CALCULATING TOTAL AMOUNT ===`);
-    const totalAmountInUSD = await calculateTotalAmountInUSD(walletAddress);
-    console.log(`💰 Total amountInUSD for wallet ${walletAddress}: $${totalAmountInUSD}`);
+    const totalAmountInUSD = await calculateTotalAmountInUSD(walletAddress, projectName);
+    console.log(`💰 Total amountInUSD for wallet ${walletAddress}${projectName ? ` and project ${projectName}` : ''}: $${totalAmountInUSD}`);
 
     // Find the appropriate price tier based on total amount
     let selectedPricePeriod = null;
@@ -431,11 +475,12 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
     return { price, marketCap };
 }
 
-// Function to calculate total amountInUSD for a wallet
-async function calculateTotalAmountInUSD(walletAddress) {
+// Function to calculate total amountInUSD for a wallet and project
+async function calculateTotalAmountInUSD(walletAddress, projectName = null) {
     try {
         console.log(`\n💰 === CALCULATING TOTAL AMOUNT START ===`);
         console.log(`💰 Wallet Address: ${walletAddress}`);
+        console.log(`💰 Project Name: ${projectName || 'All Projects'}`);
         
         // Normalize wallet address (remove 0x prefix if present)
         const normalizedAddress = walletAddress.toLowerCase().replace(/^0x/, '');
@@ -460,14 +505,20 @@ async function calculateTotalAmountInUSD(walletAddress) {
                 
                 // Query by walletAddress field - try both with and without 0x prefix
                 query.equalTo("walletAddress", walletAddress.toLowerCase());
+                
+                // Add project filtering if specified
+                if (projectName) {
+                    query.equalTo("projectName", projectName);
+                }
+                
                 const transactions = await query.find({ useMasterKey: true });
                 
-                console.log(`🔍 Found ${transactions.length} transactions in ${className} for address: ${walletAddress.toLowerCase()}`);
+                console.log(`🔍 Found ${transactions.length} transactions in ${className} for address: ${walletAddress.toLowerCase()}${projectName ? ` and project: ${projectName}` : ''}`);
                 
                 for (const transaction of transactions) {
                     const amountInUSD = transaction.get("amountInUSD") || 0;
                     totalAmount += amountInUSD;
-                    console.log(`  💵 Transaction ${transaction.id}: $${amountInUSD}`);
+                    console.log(`  💵 Transaction ${transaction.id}: $${amountInUSD}${projectName ? ` (Project: ${transaction.get("projectName") || 'N/A'})` : ''}`);
                 }
                 
                 // Also try querying with 0x prefix if no transactions found
@@ -475,6 +526,12 @@ async function calculateTotalAmountInUSD(walletAddress) {
                     console.log(`🔍 Trying with 0x prefix for ${className}...`);
                     const queryWithPrefix = new Parse.Query(Transaction);
                     queryWithPrefix.equalTo("walletAddress", `0x${walletAddress.toLowerCase()}`);
+                    
+                    // Add project filtering if specified
+                    if (projectName) {
+                        queryWithPrefix.equalTo("projectName", projectName);
+                    }
+                    
                     const transactionsWithPrefix = await queryWithPrefix.find({ useMasterKey: true });
                     
                     console.log(`🔍 Found ${transactionsWithPrefix.length} transactions with 0x prefix in ${className}`);
@@ -482,7 +539,7 @@ async function calculateTotalAmountInUSD(walletAddress) {
                     for (const transaction of transactionsWithPrefix) {
                         const amountInUSD = transaction.get("amountInUSD") || 0;
                         totalAmount += amountInUSD;
-                        console.log(`  💵 Transaction ${transaction.id}: $${amountInUSD}`);
+                        console.log(`  💵 Transaction ${transaction.id}: $${amountInUSD}${projectName ? ` (Project: ${transaction.get("projectName") || 'N/A'})` : ''}`);
                     }
                 }
             } catch (classError) {
@@ -492,7 +549,7 @@ async function calculateTotalAmountInUSD(walletAddress) {
         }
         
         console.log(`\n💰 === CALCULATING TOTAL AMOUNT END ===`);
-        console.log(`💰 Total amountInUSD for ${walletAddress}: $${totalAmount}`);
+        console.log(`💰 Total amountInUSD for ${walletAddress}${projectName ? ` and project ${projectName}` : ''}: $${totalAmount}`);
         console.log(`💰 === CALCULATING TOTAL AMOUNT END ===\n`);
         
         return totalAmount;
@@ -503,7 +560,7 @@ async function calculateTotalAmountInUSD(walletAddress) {
 }
 
 // Replace the existing getBonusForTimestamp function
-async function getBonusForTimestamp(timestamp, walletAddress) {
+async function getBonusForTimestamp(timestamp, walletAddress, projectName = null) {
     const TokenBonus = Parse.Object.extend("TokenBonus");
     const query = new Parse.Query(TokenBonus);
 
@@ -512,19 +569,23 @@ async function getBonusForTimestamp(timestamp, walletAddress) {
     query.lessThanOrEqualTo("startDate", txDate);
     query.greaterThanOrEqualTo("endDate", txDate);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
+    
+    if (projectName) {
+        query.equalTo("projectName", projectName);
+    }
 
-    console.log(`\nLooking up bonus for wallet ${walletAddress} at ${txDate}`);
+    console.log(`\nLooking up bonus for wallet ${walletAddress}${projectName ? ` and project ${projectName}` : ''} at ${txDate}`);
 
     try {
         const bonusPeriod = await query.first({ useMasterKey: true });
 
         if (!bonusPeriod) {
-            console.log(`No bonus period found for wallet ${walletAddress} at timestamp ${txDate}`);
+            console.log(`No bonus period found for wallet ${walletAddress}${projectName ? ` and project ${projectName}` : ''} at timestamp ${txDate}`);
             return 0;
         }
 
         const bonus = bonusPeriod.get("bonusPercentage");
-        console.log(`Found bonus period: ${bonus * 100}% for ${txDate}`);
+        console.log(`Found bonus period: ${bonus * 100}% for ${txDate}${projectName ? ` (Project: ${projectName})` : ''}`);
         return bonus;
     } catch (error) {
         console.error("Error getting bonus period:", error);
@@ -533,16 +594,17 @@ async function getBonusForTimestamp(timestamp, walletAddress) {
 }
 
 // Replace the existing calculateTokenRewards function
-async function calculateTokenRewards(usdAmount, walletAddress) {
+async function calculateTokenRewards(usdAmount, walletAddress, projectName = null) {
     try {
         console.log('\n🎁 === TOKEN REWARD CALCULATION START ===');
         console.log(`🎁 USD Amount: $${usdAmount}`);
         console.log(`🎁 Wallet Address: ${walletAddress}`);
+        console.log(`🎁 Project Name: ${projectName || 'All Projects'}`);
 
-        const priceData = await getTokenPriceForTimestamp(null, walletAddress);
+        const priceData = await getTokenPriceForTimestamp(null, walletAddress, projectName);
         const tokenPrice = priceData.price;
         const marketCap = priceData.marketCap;
-        const bonusPercentage = await getBonusForTimestamp(new Date(), walletAddress);
+        const bonusPercentage = await getBonusForTimestamp(new Date(), walletAddress, projectName);
 
         console.log(`🎁 Retrieved price data:`);
         console.log(`🎁 - Token Price: $${tokenPrice}`);
@@ -584,13 +646,13 @@ app.use(cors({
 }));
 
 app.post('/update-bonus', async (req, res) => {
-    const { walletAddress, newBonus, startDate, endDate } = req.body;
+    const { walletAddress, newBonus, startDate, endDate, projectName } = req.body;
 
     if (!walletAddress || !newBonus || !startDate || !endDate) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
-    const result = await updateBonus(walletAddress, newBonus, startDate, endDate);
+    const result = await updateBonus(walletAddress, newBonus, startDate, endDate, projectName);
     res.json(result);
 });
 
@@ -607,10 +669,10 @@ app.post('/add-referral', async (req, res) => {
 
 // Add endpoint for updating price and market cap
 app.post('/api/update-price', async (req, res) => {
-    const { walletAddress, price, marketCap } = req.body;
+    const { walletAddress, price, marketCap, projectName } = req.body;
 
-    if (!walletAddress || !price || !marketCap) {
-        return res.status(400).json({ success: false, error: "Missing required fields: walletAddress, price, marketCap" });
+    if (!walletAddress || !price || !marketCap || !projectName) {
+        return res.status(400).json({ success: false, error: "Missing required fields: walletAddress, price, marketCap, projectName" });
     }
 
     try {
@@ -620,6 +682,7 @@ app.post('/api/update-price', async (req, res) => {
         
         await priceEntry.save({
             walletAddress: walletAddress.toLowerCase(),
+            projectName: projectName,
             price: parseFloat(price),
             marketCap: parseFloat(marketCap)
         }, { useMasterKey: true });
@@ -635,10 +698,13 @@ app.post('/api/update-price', async (req, res) => {
 app.get('/api/current-price/:walletAddress', async (req, res) => {
     try {
         const { walletAddress } = req.params;
-        const priceData = await getTokenPriceForTimestamp(null, walletAddress);
+        const { projectName } = req.query;
+        const priceData = await getTokenPriceForTimestamp(null, walletAddress, projectName);
         
         res.json({
             success: true,
+            walletAddress,
+            projectName: projectName || 'All Projects',
             price: priceData.price,
             marketCap: priceData.marketCap
         });
@@ -652,8 +718,12 @@ app.get('/api/current-price/:walletAddress', async (req, res) => {
 app.get('/api/price-history/:walletAddress', async (req, res) => {
     try {
         const { walletAddress } = req.params;
+        const { projectName } = req.query;
         const query = new Parse.Query("TokenPrice");
         query.equalTo("walletAddress", walletAddress.toLowerCase());
+        if (projectName) {
+            query.equalTo("projectName", projectName);
+        }
         query.ascending("marketCap");
         const results = await query.find({ useMasterKey: true });
         
@@ -661,10 +731,16 @@ app.get('/api/price-history/:walletAddress', async (req, res) => {
             id: price.id,
             price: price.get("price"),
             marketCap: price.get("marketCap"),
+            projectName: price.get("projectName"),
             createdAt: price.get("createdAt")
         }));
 
-        res.json({ success: true, priceHistory });
+        res.json({ 
+            success: true, 
+            walletAddress,
+            projectName: projectName || 'All Projects',
+            priceHistory 
+        });
     } catch (error) {
         console.error('Error fetching price history:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -1001,7 +1077,7 @@ if (parseLiveQueryServer.server) {
     });
 }
 // ✅ Main SOL transaction processor
-async function processTransactionSOL(tx, className) {
+async function processTransactionSOL(tx, className, projectName = null) {
     try {
         let blockNumber = tx.slot || 0;
 
@@ -1053,7 +1129,7 @@ async function processTransactionSOL(tx, className) {
             console.log(`🚀 Amount in USD: $${amountInUSD}`);
             console.log(`🚀 Wallet Address: ${tx.walletAddress.toLowerCase()}`);
             
-            const tokenRewards = await calculateTokenRewards(amountInUSD, tx.walletAddress.toLowerCase());
+            const tokenRewards = await calculateTokenRewards(amountInUSD, tx.walletAddress.toLowerCase(), projectName);
             const bonusPercentage = await getBonusForTimestamp(timestamp, tx.walletAddress.toLowerCase());
 
             console.log(`\n🚀 === SOL TRANSACTION FINAL DETAILS ===`);
@@ -1077,6 +1153,7 @@ async function processTransactionSOL(tx, className) {
                 amountInToken: maxDiffInSOL,
                 tokenPrice: tokenRewards.price,
                 marketCap: tokenRewards.marketCap,
+                projectName: projectName,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
                 baseTokens: tokenRewards.baseTokens,
@@ -1104,7 +1181,7 @@ async function processTransactionSOL(tx, className) {
 
 
 // Update processTransaction to ensure wallet address is correctly passed
-async function processTransaction(type, tx, isHistorical = false, block = null, className, networks) {
+async function processTransaction(type, tx, isHistorical = false, block = null, className, networks, projectName = null) {
     try {
         const fullWalletAddress = tx.to.toLowerCase();
         console.log("Processing transaction for", fullWalletAddress);
@@ -1176,7 +1253,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         console.log(`🚀 Wallet Address: ${fullWalletAddress}`);
 
         // Calculate token rewards with the full wallet address
-        tokenRewards = await calculateTokenRewards(amountInUSD, fullWalletAddress);
+        tokenRewards = await calculateTokenRewards(amountInUSD, fullWalletAddress, projectName);
         
         console.log(`\n🚀 === ${type} TRANSACTION FINAL DETAILS ===`);
         console.log(`🚀 Token Price: $${tokenRewards.price}`);
@@ -1213,6 +1290,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 amountInToken: tx.value,
                 tokenPrice: tokenRewards.price,
                 marketCap: tokenRewards.marketCap,
+                projectName: projectName,
                 bonusPercentage: bonusPercentage,
                 hasBonus: bonusPercentage > 0,
                 baseTokens: tokenRewards.baseTokens,
@@ -1237,7 +1315,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
 }
 
 // Add a function to update price for future periods
-async function updatePrice(walletAddress, newPrice, startDate, endDate) {
+async function updatePrice(walletAddress, newPrice, startDate, endDate, projectName = null) {
     try {
         const formattedStartDate = validateISODate(startDate);
         const now = new Date();
@@ -1246,7 +1324,7 @@ async function updatePrice(walletAddress, newPrice, startDate, endDate) {
             throw new Error("Cannot update price for past periods");
         }
 
-        await addPricePeriod(walletAddress, newPrice, startDate, endDate);
+        await addPricePeriod(walletAddress, newPrice, startDate, endDate, projectName);
         console.log('Price updated successfully');
     } catch (error) {
         console.error('Error updating price:', error);
@@ -1255,7 +1333,7 @@ async function updatePrice(walletAddress, newPrice, startDate, endDate) {
 }
 
 // Add a function to update bonus for future periods
-async function updateBonus(walletAddress, newBonus, startDate, endDate) {
+async function updateBonus(walletAddress, newBonus, startDate, endDate, projectName = null) {
     try {
         const formattedStartDate = validateISODate(startDate);
         const now = new Date();
@@ -1264,7 +1342,7 @@ async function updateBonus(walletAddress, newBonus, startDate, endDate) {
             throw new Error("Cannot update bonus for past periods");
         }
 
-        await addBonusPeriod(walletAddress, newBonus, startDate, endDate);
+        await addBonusPeriod(walletAddress, newBonus, startDate, endDate, projectName);
         console.log('Bonus updated successfully');
     } catch (error) {
         console.error('Error updating bonus:', error);
@@ -1339,11 +1417,11 @@ async function addReferral(walletAddress, refAddress) {
 
 // Add this new endpoint for setting up wallet tracking
 app.post('/api/setupWalletTracking', async (req, res) => {
-    const { walletAddress, network, initialPrice, initialBonus, startDate, endDate } = req.body;
+    const { walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName } = req.body;
 
     try {
         // Call the setupWalletTracking function with the provided parameters
-        const config = await setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate);
+        const config = await setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName);
         res.status(200).json({ message: 'Wallet tracking setup successfully', config });
     } catch (error) {
         console.error('Error in setupWalletTracking:', error);
@@ -1356,13 +1434,15 @@ app.post('/api/setupWalletTracking', async (req, res) => {
 app.get('/api/debug-price/:walletAddress', async (req, res) => {
     try {
         const { walletAddress } = req.params;
-        console.log(`\n=== DEBUG PRICE CALCULATION FOR ${walletAddress} ===`);
+        const { projectName } = req.query;
+        console.log(`\n=== DEBUG PRICE CALCULATION FOR ${walletAddress}${projectName ? ` (Project: ${projectName})` : ''} ===`);
         
-        const priceData = await getTokenPriceForTimestamp(null, walletAddress);
-        const totalAmount = await calculateTotalAmountInUSD(walletAddress);
+        const priceData = await getTokenPriceForTimestamp(null, walletAddress, projectName);
+        const totalAmount = await calculateTotalAmountInUSD(walletAddress, projectName);
         
         res.json({
             walletAddress,
+            projectName: projectName || 'All Projects',
             totalAmountInUSD: totalAmount,
             selectedPrice: priceData.price,
             selectedMarketCap: priceData.marketCap
@@ -1377,34 +1457,41 @@ app.get('/api/debug-price/:walletAddress', async (req, res) => {
 app.get('/api/debug-detailed/:walletAddress', async (req, res) => {
     try {
         const { walletAddress } = req.params;
+        const { projectName } = req.query;
         
         console.log(`\n🔍 === DETAILED DEBUG START ===`);
         console.log(`🔍 Wallet Address: ${walletAddress}`);
+        console.log(`🔍 Project Name: ${projectName || 'All Projects'}`);
         
         // Test TokenPrice query
         const TokenPrice = Parse.Object.extend("TokenPrice");
         const query = new Parse.Query(TokenPrice);
         query.equalTo("walletAddress", walletAddress.toLowerCase());
+        if (projectName) {
+            query.equalTo("projectName", projectName);
+        }
         query.ascending("marketCap");
         
         const pricePeriods = await query.find({ useMasterKey: true });
         console.log(`🔍 Found ${pricePeriods.length} price periods`);
         
         // Test transaction calculation
-        const totalAmount = await calculateTotalAmountInUSD(walletAddress);
+        const totalAmount = await calculateTotalAmountInUSD(walletAddress, projectName);
         console.log(`🔍 Total amount calculated: $${totalAmount}`);
         
         // Test price selection
-        const result = await getTokenPriceForTimestamp(null, walletAddress);
+        const result = await getTokenPriceForTimestamp(null, walletAddress, projectName);
         
         console.log(`🔍 === DETAILED DEBUG END ===\n`);
         
         res.json({
             success: true,
             walletAddress,
+            projectName: projectName || 'All Projects',
             pricePeriods: pricePeriods.map(p => ({
                 price: p.get("price"),
-                marketCap: p.get("marketCap")
+                marketCap: p.get("marketCap"),
+                projectName: p.get("projectName")
             })),
             totalAmount,
             selectedResult: result
