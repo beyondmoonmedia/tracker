@@ -1,7 +1,8 @@
 // Import required modules
 const Parse = require('parse-server/lib/cloud-code/Parse.Cloud');
 const path = require('path');
-const { io } = require('../workingwelleth'); // Adjust the path as necessary
+// Use stub for trackerserver - workingwelleth binds to 3000/443 and conflicts with dashboard
+const { io } = require('./io-stub.js');
 
 
 console.log('Loading cloud functions2...');

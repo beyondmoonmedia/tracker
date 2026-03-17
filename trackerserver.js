@@ -18,9 +18,9 @@ app.use(express.json());
 const config = {
     databaseURI: process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
     appId: process.env.PARSE_APP_ID || 'myAppId',
-    masterKey: 'myMasterKey',
-    serverURL: 'http://localhost:1337/parse',
-    publicServerURL: 'http://localhost:1337/parse',
+    masterKey: process.env.PARSE_MASTER_KEY || 'myMasterKey',
+    serverURL: process.env.PARSE_SERVER_URL || 'http://localhost:1337/parse',
+    publicServerURL: process.env.PARSE_SERVER_URL || 'http://localhost:1337/parse',
     allowClientClassCreation: false,
     allowExpiredAuthDataToken: false,
     cloud: path.join(__dirname, '/cloud/main.js'),
@@ -83,25 +83,31 @@ async function getBNBPrice(blockNumber) {
 }
 
 // Add these new functions after the constants
-async function setupWalletConfig(walletAddress, network) {
+async function setupWalletConfig(walletAddress, network, projectName = null) {
     const WalletConfig = Parse.Object.extend("WalletConfig");
 
-    // Create a unique class name for this wallet
-    const walletClassName = `Transaction_${walletAddress.substring(2, 8)}_${network}`;
+    // Create a unique class name for this wallet (use first 6 hex chars + network)
+    const networkShort = network.replace('_MAINNET', '').replace('ETH', 'ETH').replace('BNB', 'BSC');
+    const walletClassName = `Transaction_${walletAddress.substring(2, 8)}_${networkShort}`;
 
-    // Check if wallet config exists
+    // Check if wallet config exists for this wallet+network (+ projectName if set)
     const query = new Parse.Query(WalletConfig);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
+    query.equalTo("network", network);
+    if (projectName) query.equalTo("projectName", projectName);
     let config = await query.first({ useMasterKey: true });
 
     if (!config) {
         // Create new wallet config
         config = new WalletConfig();
-        await config.save({
+        const saveData = {
             walletAddress: walletAddress.toLowerCase(),
             transactionClassName: walletClassName,
+            network: network,
             isActive: true
-        }, { useMasterKey: true });
+        };
+        if (projectName) saveData.projectName = projectName;
+        await config.save(saveData, { useMasterKey: true });
 
         try {
             // Attempt to create new Transaction class for this wallet
@@ -126,12 +132,11 @@ async function setupWalletConfig(walletAddress, network) {
             if (error.code === 103) { // Parse error code for 'Class already exists'
                 console.log(`Transaction class ${walletClassName} already exists, continuing...`);
             } else {
-                // If it's a different error, we should still throw it
                 throw error;
             }
         }
     } else {
-        console.log(`Wallet config already exists for ${walletAddress}, continuing...`);
+        console.log(`Wallet config already exists for ${walletAddress} (${network}), continuing...`);
     }
 
     return config;
@@ -266,7 +271,7 @@ async function addReferral(walletAddress, refAddress) {
 }
 
 // Add these new functions for managing price and bonus periods
-async function addPricePeriod(walletAddress, price, startDate, endDate) {
+async function addPricePeriod(walletAddress, price, startDate, endDate, projectName = null, marketCap = null) {
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const price_entry = new TokenPrice();
 
@@ -279,13 +284,17 @@ async function addPricePeriod(walletAddress, price, startDate, endDate) {
     console.log(`Start Date: ${formattedStartDate}`);
     console.log(`End Date: ${formattedEndDate}`);
 
+    const saveData = {
+        walletAddress: walletAddress.toLowerCase(),
+        price: price,
+        startDate: new Date(formattedStartDate),
+        endDate: new Date(formattedEndDate)
+    };
+    if (projectName) saveData.projectName = projectName;
+    if (marketCap != null) saveData.marketCap = marketCap;
+
     try {
-        await price_entry.save({
-            walletAddress: walletAddress.toLowerCase(),
-            price: price,
-            startDate: new Date(formattedStartDate),
-            endDate: new Date(formattedEndDate)
-        }, { useMasterKey: true });
+        await price_entry.save(saveData, { useMasterKey: true });
 
         console.log('Price period added successfully');
         return price_entry;
@@ -295,7 +304,7 @@ async function addPricePeriod(walletAddress, price, startDate, endDate) {
     }
 }
 
-async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate) {
+async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate, projectName = null) {
     const TokenBonus = Parse.Object.extend("TokenBonus");
     const bonus_entry = new TokenBonus();
 
@@ -308,13 +317,16 @@ async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate
     console.log(`Start Date: ${formattedStartDate}`);
     console.log(`End Date: ${formattedEndDate}`);
 
+    const saveData = {
+        walletAddress: walletAddress.toLowerCase(),
+        bonusPercentage: bonusPercentage,
+        startDate: new Date(formattedStartDate),
+        endDate: new Date(formattedEndDate)
+    };
+    if (projectName) saveData.projectName = projectName;
+
     try {
-        await bonus_entry.save({
-            walletAddress: walletAddress.toLowerCase(),
-            bonusPercentage: bonusPercentage,
-            startDate: new Date(formattedStartDate),
-            endDate: new Date(formattedEndDate)
-        }, { useMasterKey: true });
+        await bonus_entry.save(saveData, { useMasterKey: true });
 
         console.log('Bonus period added successfully');
         return bonus_entry;
@@ -324,14 +336,14 @@ async function addBonusPeriod(walletAddress, bonusPercentage, startDate, endDate
     }
 }
 
-// Update setupWalletPricingAndBonus to accept date ranges
-async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus = 0, startDate, endDate) {
+// Update setupWalletPricingAndBonus to accept date ranges and projectName
+async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus = 0, startDate, endDate, projectName = null, marketCap = null) {
     console.log(`\nSetting up pricing and bonus for wallet ${walletAddress}`);
     console.log(`Initial price: $${initialPrice}`);
     console.log(`Initial bonus: ${initialBonus * 100}%`);
 
-    await addPricePeriod(walletAddress, initialPrice, startDate, endDate);
-    await addBonusPeriod(walletAddress, initialBonus, startDate, endDate);
+    await addPricePeriod(walletAddress, initialPrice, startDate, endDate, projectName, marketCap);
+    await addBonusPeriod(walletAddress, initialBonus, startDate, endDate, projectName);
 
     // Verify the setup
     const TokenPrice = Parse.Object.extend("TokenPrice");
@@ -351,15 +363,15 @@ async function setupWalletPricingAndBonus(walletAddress, initialPrice, initialBo
     console.log(`Bonus period: ${savedBonus.get("startDate").toISOString()}`);
 }
 
-// Update setupWalletTracking to accept date ranges
-async function setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate) {
+// Update setupWalletTracking to accept date ranges and projectName
+async function setupWalletTracking(walletAddress, network, initialPrice, initialBonus, startDate, endDate, projectName = null, marketCap = null) {
     try {
         console.log(`\nSetting up wallet tracking for ${walletAddress}`);
         console.log(`Initial price: $${initialPrice}`);
         console.log(`Initial bonus: ${initialBonus * 100}%`);
 
-        const config = await setupWalletConfig(walletAddress, network);
-        await setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus, startDate, endDate);
+        const config = await setupWalletConfig(walletAddress, network, projectName);
+        await setupWalletPricingAndBonus(walletAddress, initialPrice, initialBonus, startDate, endDate, projectName, marketCap);
 
         // Verify the setup worked
         const TokenPrice = Parse.Object.extend("TokenPrice");
@@ -506,11 +518,15 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
     }
 }
 
+// Poll interval (ms). Many public RPCs don't support eth_newFilter/eth_getFilterChanges ("filter not found").
+const BSC_POLL_INTERVAL_MS = parseInt(process.env.BSC_POLL_INTERVAL_MS || '15000', 10); // 15s default
+let bscPollLastBlock = 0;
+
 async function monitorBSCTransfers() {
     const WalletConfig = Parse.Object.extend("WalletConfig");
     const query = new Parse.Query(WalletConfig);
     query.equalTo("isActive", true);
-    query.equalTo("network", "BNB_MAINNET"); // ✅ Only BNB
+    query.equalTo("network", "BNB_MAINNET");
 
     const activeWallets = await query.find({ useMasterKey: true });
 
@@ -519,51 +535,55 @@ async function monitorBSCTransfers() {
         return;
     }
 
-    console.log(`Starting BSC monitoring for ${activeWallets.length} wallets`);
+    const walletList = activeWallets.map((c) => ({
+        walletAddress: c.get("walletAddress").toLowerCase(),
+        className: c.get("transactionClassName"),
+    }));
 
-    for (const walletConfig of activeWallets) {
-        const walletAddress = walletConfig.get("walletAddress");
-        const className = walletConfig.get("transactionClassName");
+    console.log(`Starting BSC monitoring (polling) for ${walletList.length} wallets, interval ${BSC_POLL_INTERVAL_MS}ms`);
 
-        // Set up event listeners for each wallet
-        provider.on({
-            address: walletAddress,
-            topics: []
-        }, async (log) => {
-            try {
-                const tx = await provider.getTransaction(log.transactionHash);
-                if (!tx) return;
+    async function pollBlocks() {
+        try {
+            const latest = await provider.getBlockNumber();
+            const fromBlock = bscPollLastBlock
+                ? bscPollLastBlock + 1
+                : Math.max(0, latest - 20); // first run: only last 20 blocks
+            if (fromBlock > latest) return;
+            bscPollLastBlock = latest;
 
-                // Check if it's BNB transfer
-                if (tx.to?.toLowerCase() === walletAddress.toLowerCase() && tx.value && tx.value !== '0x0') {
-                    console.log(`\nNew pending BNB transaction detected for ${walletAddress}`);
-                    const receipt = await provider.waitForTransaction(tx.hash);
-                    const block = await provider.getBlock(receipt.blockNumber);
-                    await processTransaction('BNB', tx, false, block, className);
-                }
-
-                // Check if it's USDT transfer
-                if (tx.to?.toLowerCase() === USDT_ADDRESS.toLowerCase()) {
-                    const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
-                    try {
-                        const decoded = iface.decodeFunctionData('transfer', tx.data);
-                        if (decoded.to.toLowerCase() === walletAddress.toLowerCase()) {
-                            console.log(`\nNew pending USDT transaction detected for ${walletAddress}`);
-                            const receipt = await provider.waitForTransaction(tx.hash);
-                            const block = await provider.getBlock(receipt.blockNumber);
-                            await processTransaction('USDT', tx, false, block, className);
+            for (let blockNum = fromBlock; blockNum <= latest; blockNum++) {
+                const block = await provider.getBlock(blockNum, true);
+                if (!block || !block.prefetchedTransactions) continue;
+                for (const tx of block.prefetchedTransactions) {
+                    if (!tx.to) continue;
+                    const to = tx.to.toLowerCase();
+                    for (const { walletAddress, className } of walletList) {
+                        if (tx.to?.toLowerCase() === walletAddress && tx.value && tx.value !== 0n) {
+                            await processTransaction('BNB', tx, false, block, className);
+                            continue;
                         }
-                    } catch (e) {
-                        // Not a transfer function call
+                        if (to === USDT_ADDRESS.toLowerCase() && tx.data && tx.data.length >= 138) {
+                            const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
+                            try {
+                                const decoded = iface.decodeFunctionData('transfer', tx.data);
+                                if (decoded.to.toLowerCase() === walletAddress) {
+                                    await processTransaction('USDT', tx, false, block, className);
+                                }
+                            } catch (_) { /* not transfer */ }
+                        }
                     }
                 }
-            } catch (error) {
-                console.error('Error processing new transaction:', error);
             }
-        });
+        } catch (error) {
+            if (error.message && !error.message.includes('filter not found')) {
+                console.error('BSC poll error:', error.message);
+            }
+        }
     }
 
-    console.log('Transaction monitoring started successfully');
+    await pollBlocks();
+    setInterval(pollBlocks, BSC_POLL_INTERVAL_MS);
+    console.log('Transaction monitoring (polling) started successfully');
 }
 
 // Update processTransaction to handle BNB instead of ETH
@@ -769,6 +789,43 @@ app.post('/add-referral', async (req, res) => {
     } catch (error) {
         console.error('Error adding referral:', error);
         res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Set up a wallet for a project (payment + tracking). Creates WalletConfig, TokenPrice, TokenBonus, Transaction class.
+// Body: { walletAddress, projectName, initialPrice?, initialBonus?, marketCap? }
+app.post('/api/setup-project-wallet', async (req, res) => {
+    const raw = req.body;
+    const walletAddress = typeof raw.walletAddress === 'string' ? raw.walletAddress.trim() : raw.walletAddress;
+    const projectName = typeof raw.projectName === 'string' ? raw.projectName.trim() : raw.projectName;
+    const initialPrice = raw.initialPrice ?? 0.01;
+    const initialBonus = raw.initialBonus ?? 0;
+    const marketCap = raw.marketCap ?? 0;
+    if (!walletAddress || !projectName) {
+        return res.status(400).json({ error: 'walletAddress and projectName are required' });
+    }
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setFullYear(endDate.getFullYear() + 10);
+    try {
+        const results = {};
+        for (const network of ['BNB_MAINNET', 'ETH_MAINNET']) {
+            const config = await setupWalletTracking(
+                walletAddress,
+                network,
+                initialPrice,
+                initialBonus,
+                startDate.toISOString(),
+                endDate.toISOString(),
+                projectName,
+                marketCap
+            );
+            results[network] = { transactionClassName: config.get('transactionClassName') };
+        }
+        res.status(200).json({ message: 'Wallet set up for project', walletAddress, projectName, results });
+    } catch (error) {
+        console.error('Error setting up project wallet:', error);
+        res.status(500).json({ error: error.message || 'Internal Server Error' });
     }
 });
 
