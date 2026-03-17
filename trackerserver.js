@@ -24,6 +24,7 @@ const config = {
     allowClientClassCreation: false,
     allowExpiredAuthDataToken: false,
     cloud: path.join(__dirname, '/cloud/main.js'),
+    push: { queueOptions: { disablePushWorker: true } },
 };
 
 // Initialize Alchemy for Ethereum Mainnet
