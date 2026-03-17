@@ -26,3 +26,10 @@ dist-ssr
 dist.zip
 
 .env
+
+# SSL: never commit private keys
+*.key
+**/private.key
+**/*.key
+# Cert zip (use extracted files only)
+*.zip
