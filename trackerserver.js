@@ -7,12 +7,29 @@ const { ethers } = require('ethers');
 require('dotenv').config();
 
 const path = require('path');
+const fs = require('fs');
 // Constants
 const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'; // BSC USDT (BUSD)
 const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE'; // BSC BNB/USD feed
 const TOKEN_PRICE_USD = 0.013; // Price per token in USD
 // Express and Parse Server setup
 const app = express();
+
+// ZeroSSL / Let's Encrypt domain validation (place file in .well-known/pki-validation/)
+const wellKnownDir = path.join(__dirname, '.well-known', 'pki-validation');
+app.get(/^\/\.well-known\/pki-validation\/([^/]+)\/?$/, (req, res) => {
+    const name = (req.path.match(/^\/\.well-known\/pki-validation\/([^/]+)/) || [])[1];
+    if (!name || name.includes('..')) return res.status(400).end();
+    const filePath = path.join(wellKnownDir, name);
+    if (!path.normalize(filePath).startsWith(path.normalize(wellKnownDir))) return res.status(400).end();
+    try {
+        if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+        const body = fs.readFileSync(filePath, 'utf8');
+        res.type('text/plain').send(body);
+    } catch (e) {
+        res.status(404).send('Not found');
+    }
+});
 
 app.use(express.json());
 const config = {
@@ -761,7 +778,8 @@ parseServer.start().then(async () => {
 
     // Start the server
     const PORT = process.env.PORT || 1337;
-    app.listen(PORT, async () => {
+    const HOST = process.env.HOST || '0.0.0.0';
+    app.listen(PORT, HOST, async () => {
         console.log(`Server is running!`);
 
         // Start blockchain monitoring with BSC
