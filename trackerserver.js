@@ -9,7 +9,8 @@ require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 // Constants
-const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'; // BSC USDT (BUSD)
+const BSC_USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'; // BSC USDT
+const ETH_USDT_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'; // Ethereum USDT
 const CHAINLINK_BNB_USD_FEED = '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE'; // BSC BNB/USD feed
 const TOKEN_PRICE_USD = 0.013; // Price per token in USD
 // Express and Parse Server setup
@@ -56,7 +57,8 @@ let ethPriceCache = { price: 0, lastUpdate: 0 };
 const PRICE_CACHE_DURATION = 60 * 1000; // 1 minute
 
 // Add this after alchemy initialization
-const provider = new ethers.JsonRpcProvider(process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org/');
+const bscProvider = new ethers.JsonRpcProvider(process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org/');
+const ethProvider = new ethers.JsonRpcProvider(process.env.ETH_RPC_URL || process.env.MAINNET_RPC_URL || 'https://eth.llamarpc.com');
 
 // Add these constants at the top
 const aggregatorV3InterfaceABI = [
@@ -79,7 +81,7 @@ const aggregatorV3InterfaceABI = [
 const priceFeed = new ethers.Contract(
     CHAINLINK_BNB_USD_FEED,
     aggregatorV3InterfaceABI,
-    provider
+    bscProvider
 );
 
 // Replace getETHPrice function with this one
@@ -98,6 +100,24 @@ async function getBNBPrice(blockNumber) {
             return 0;
         }
     }
+}
+
+async function getETHPrice() {
+    const now = Date.now();
+    if (ethPriceCache.price > 0 && now - ethPriceCache.lastUpdate < PRICE_CACHE_DURATION) {
+        return ethPriceCache.price;
+    }
+    try {
+        const response = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT');
+        const price = parseFloat(response.data.price);
+        if (Number.isFinite(price) && price > 0) {
+            ethPriceCache = { price, lastUpdate: now };
+            return price;
+        }
+    } catch (error) {
+        console.error('Error fetching ETH price:', error.message || error);
+    }
+    return ethPriceCache.price || 0;
 }
 
 // Add these new functions after the constants
@@ -411,30 +431,34 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
         console.log(`\nProcessing historical transactions for class: ${className}`);
 
         try {
-            const incomingEth = await alchemy.core.getAssetTransfers({
-                fromBlock: "0x0",
-                toBlock: "latest",
-                toAddress: walletAddress,
-                category: ["external", "internal"],
-            });
+            if (network === 'ETH_MAINNET') {
+                const incomingEth = await alchemy.core.getAssetTransfers({
+                    fromBlock: "0x0",
+                    toBlock: "latest",
+                    toAddress: walletAddress,
+                    category: ["external", "internal"],
+                });
 
-            const incomingUsdt = await alchemy.core.getAssetTransfers({
-                fromBlock: "0x0",
-                toBlock: "latest",
-                toAddress: walletAddress,
-                contractAddresses: [USDT_ADDRESS],
-                category: ["erc20"],
-            });
+                const incomingUsdt = await alchemy.core.getAssetTransfers({
+                    fromBlock: "0x0",
+                    toBlock: "latest",
+                    toAddress: walletAddress,
+                    contractAddresses: [ETH_USDT_ADDRESS],
+                    category: ["erc20"],
+                });
 
-            console.log(`Found ${incomingEth.transfers.length} ETH transactions`);
-            console.log(`Found ${incomingUsdt.transfers.length} USDT transactions`);
+                console.log(`Found ${incomingEth.transfers.length} ETH transactions`);
+                console.log(`Found ${incomingUsdt.transfers.length} USDT transactions`);
 
-            for (const tx of incomingEth.transfers) {
-                await processTransaction('ETH', tx, true, null, className);
-            }
+                for (const tx of incomingEth.transfers) {
+                    await processTransaction('ETH', tx, true, null, className, walletAddress, null, projectName);
+                }
 
-            for (const tx of incomingUsdt.transfers) {
-                await processTransaction('USDT', tx, true, null, className);
+                for (const tx of incomingUsdt.transfers) {
+                    await processTransaction('USDT', tx, true, null, className, walletAddress, null, projectName);
+                }
+            } else {
+                console.log(`Skipping historical transfer import for ${network}`);
             }
         } catch (error) {
             console.error(`Error processing historical transactions:`, error);
@@ -448,15 +472,16 @@ async function setupWalletTracking(walletAddress, network, initialPrice, initial
 }
 
 // Replace the existing getTokenPriceForTimestamp function
-async function getTokenPriceForTimestamp(timestamp, walletAddress) {
+async function getTokenPriceForTimestamp(timestamp, walletAddress, projectName = null) {
     const TokenPrice = Parse.Object.extend("TokenPrice");
     const query = new Parse.Query(TokenPrice);
 
     const txDate = timestamp instanceof Date ? timestamp : new Date(timestamp);
 
-    query.greaterThanOrEqualTo("endDate", txDate);
     query.lessThanOrEqualTo("startDate", txDate);
+    query.greaterThanOrEqualTo("endDate", txDate);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
+    if (projectName) query.equalTo("projectName", projectName);
 
     console.log(`\nLooking up price for wallet ${walletAddress} at ${txDate}`);
 
@@ -473,7 +498,7 @@ async function getTokenPriceForTimestamp(timestamp, walletAddress) {
 }
 
 // Replace the existing getBonusForTimestamp function
-async function getBonusForTimestamp(timestamp, walletAddress) {
+async function getBonusForTimestamp(timestamp, walletAddress, projectName = null) {
     const TokenBonus = Parse.Object.extend("TokenBonus");
     const query = new Parse.Query(TokenBonus);
 
@@ -482,6 +507,7 @@ async function getBonusForTimestamp(timestamp, walletAddress) {
     query.lessThanOrEqualTo("startDate", txDate);
     query.greaterThanOrEqualTo("endDate", txDate);
     query.equalTo("walletAddress", walletAddress.toLowerCase());
+    if (projectName) query.equalTo("projectName", projectName);
 
     console.log(`\nLooking up bonus for wallet ${walletAddress} at ${txDate}`);
 
@@ -503,15 +529,15 @@ async function getBonusForTimestamp(timestamp, walletAddress) {
 }
 
 // Replace the existing calculateTokenRewards function
-async function calculateTokenRewards(usdAmount, timestamp, walletAddress) {
+async function calculateTokenRewards(usdAmount, timestamp, walletAddress, projectName = null) {
     try {
         console.log('\nStarting Token Reward Calculation:');
         console.log(`USD Amount: $${usdAmount}`);
         console.log(`Timestamp: ${timestamp}`);
         console.log(`Wallet Address: ${walletAddress}`);
 
-        const tokenPrice = await getTokenPriceForTimestamp(timestamp, walletAddress);
-        const bonusPercentage = await getBonusForTimestamp(timestamp, walletAddress);
+        const tokenPrice = await getTokenPriceForTimestamp(timestamp, walletAddress, projectName);
+        const bonusPercentage = await getBonusForTimestamp(timestamp, walletAddress, projectName);
 
         if (tokenPrice === 0) {
             console.log('No token price available - 0 tokens awarded');
@@ -556,13 +582,14 @@ async function monitorBSCTransfers() {
     const walletList = activeWallets.map((c) => ({
         walletAddress: c.get("walletAddress").toLowerCase(),
         className: c.get("transactionClassName"),
+        projectName: c.get("projectName") || null,
     }));
 
     console.log(`Starting BSC monitoring (polling) for ${walletList.length} wallets, interval ${BSC_POLL_INTERVAL_MS}ms`);
 
     async function pollBlocks() {
         try {
-            const latest = await provider.getBlockNumber();
+            const latest = await bscProvider.getBlockNumber();
             const fromBlock = bscPollLastBlock
                 ? bscPollLastBlock + 1
                 : Math.max(0, latest - 20); // first run: only last 20 blocks
@@ -570,22 +597,22 @@ async function monitorBSCTransfers() {
             bscPollLastBlock = latest;
 
             for (let blockNum = fromBlock; blockNum <= latest; blockNum++) {
-                const block = await provider.getBlock(blockNum, true);
+                const block = await bscProvider.getBlock(blockNum, true);
                 if (!block || !block.prefetchedTransactions) continue;
                 for (const tx of block.prefetchedTransactions) {
                     if (!tx.to) continue;
                     const to = tx.to.toLowerCase();
-                    for (const { walletAddress, className } of walletList) {
+                    for (const { walletAddress, className, projectName } of walletList) {
                         if (tx.to?.toLowerCase() === walletAddress && tx.value && tx.value !== 0n) {
-                            await processTransaction('BNB', tx, false, block, className);
+                            await processTransaction('BNB', tx, false, block, className, walletAddress, null, projectName);
                             continue;
                         }
-                        if (to === USDT_ADDRESS.toLowerCase() && tx.data && tx.data.length >= 138) {
+                        if (to === BSC_USDT_ADDRESS.toLowerCase() && tx.data && tx.data.length >= 138) {
                             const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
                             try {
                                 const decoded = iface.decodeFunctionData('transfer', tx.data);
                                 if (decoded.to.toLowerCase() === walletAddress) {
-                                    await processTransaction('USDT', tx, false, block, className);
+                                    await processTransaction('USDT', tx, false, block, className, walletAddress, decoded.value, projectName);
                                 }
                             } catch (_) { /* not transfer */ }
                         }
@@ -604,10 +631,73 @@ async function monitorBSCTransfers() {
     console.log('Transaction monitoring (polling) started successfully');
 }
 
+const ETH_POLL_INTERVAL_MS = parseInt(process.env.ETH_POLL_INTERVAL_MS || '15000', 10);
+let ethPollLastBlock = 0;
+
+async function monitorETHTransfers() {
+    const WalletConfig = Parse.Object.extend("WalletConfig");
+    const query = new Parse.Query(WalletConfig);
+    query.equalTo("isActive", true);
+    query.equalTo("network", "ETH_MAINNET");
+
+    const activeWallets = await query.find({ useMasterKey: true });
+    if (activeWallets.length === 0) {
+        console.log('No active ETH wallets to monitor');
+        return;
+    }
+
+    const walletList = activeWallets.map((c) => ({
+        walletAddress: c.get("walletAddress").toLowerCase(),
+        className: c.get("transactionClassName"),
+        projectName: c.get("projectName") || null,
+    }));
+
+    console.log(`Starting ETH monitoring (polling) for ${walletList.length} wallets, interval ${ETH_POLL_INTERVAL_MS}ms`);
+
+    async function pollBlocks() {
+        try {
+            const latest = await ethProvider.getBlockNumber();
+            const fromBlock = ethPollLastBlock ? ethPollLastBlock + 1 : Math.max(0, latest - 20);
+            if (fromBlock > latest) return;
+            ethPollLastBlock = latest;
+
+            for (let blockNum = fromBlock; blockNum <= latest; blockNum++) {
+                const block = await ethProvider.getBlock(blockNum, true);
+                if (!block || !block.prefetchedTransactions) continue;
+                for (const tx of block.prefetchedTransactions) {
+                    if (!tx.to) continue;
+                    const to = tx.to.toLowerCase();
+                    for (const { walletAddress, className, projectName } of walletList) {
+                        if (to === walletAddress && tx.value && tx.value !== 0n) {
+                            await processTransaction('ETH', tx, false, block, className, walletAddress, null, projectName);
+                            continue;
+                        }
+                        if (to === ETH_USDT_ADDRESS.toLowerCase() && tx.data && tx.data.length >= 138) {
+                            const iface = new ethers.Interface(['function transfer(address to, uint256 value)']);
+                            try {
+                                const decoded = iface.decodeFunctionData('transfer', tx.data);
+                                if (decoded.to.toLowerCase() === walletAddress) {
+                                    await processTransaction('USDT', tx, false, block, className, walletAddress, decoded.value, projectName);
+                                }
+                            } catch (_) { /* not transfer */ }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('ETH poll error:', error.message || error);
+        }
+    }
+
+    await pollBlocks();
+    setInterval(pollBlocks, ETH_POLL_INTERVAL_MS);
+    console.log('ETH transaction monitoring (polling) started successfully');
+}
+
 // Update processTransaction to handle BNB instead of ETH
-async function processTransaction(type, tx, isHistorical = false, block = null, className) {
+async function processTransaction(type, tx, isHistorical = false, block = null, className, targetWalletAddress = null, tokenRawAmount = null, projectName = null) {
     try {
-        const fullWalletAddress = tx.to.toLowerCase();
+        const fullWalletAddress = (targetWalletAddress || tx.to || '').toLowerCase();
 
         // Check if transaction already exists
         const Transaction = Parse.Object.extend(className);
@@ -633,7 +723,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 timestamp = new Date(block.timestamp * 1000);
             } else {
                 // Get block information if we don't have timestamp
-                const txBlock = await provider.getBlock(tx.blockNum);
+                const txBlock = await (type === 'ETH' ? ethProvider : bscProvider).getBlock(tx.blockNum);
                 timestamp = new Date(txBlock.timestamp * 1000);
             }
 
@@ -642,6 +732,9 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             if (type === 'BNB') {
                 const bnbPrice = await getBNBPrice(blockNumber);
                 amountInUSD = parseFloat(tx.value) * bnbPrice;
+            } else if (type === 'ETH') {
+                const ethPrice = await getETHPrice();
+                amountInUSD = parseFloat(tx.value) * ethPrice;
             } else {
                 amountInUSD = parseFloat(tx.value);
             }
@@ -651,18 +744,18 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
                 timestamp = new Date(block.timestamp * 1000);
                 blockNumber = block.number;
             } else {
-                const txBlock = await provider.getBlock(tx.blockNumber);
+                const txBlock = await (type === 'ETH' ? ethProvider : bscProvider).getBlock(tx.blockNumber);
                 timestamp = new Date(txBlock.timestamp * 1000);
                 blockNumber = txBlock.number;
             }
 
-            if (type === 'BNB') {
-                const bnbPrice = await getBNBPrice(blockNumber);
+            if (type === 'BNB' || type === 'ETH') {
+                const nativePrice = type === 'ETH' ? await getETHPrice() : await getBNBPrice(blockNumber);
                 const value = ethers.formatEther(tx.value);
-                amountInUSD = parseFloat(value) * bnbPrice;
+                amountInUSD = parseFloat(value) * nativePrice;
             } else {
                 // Handle USDT amount
-                const value = ethers.formatUnits(tx.value, 6); // USDT has 6 decimals
+                const value = ethers.formatUnits(tokenRawAmount ?? tx.value ?? 0n, 6); // USDT has 6 decimals
                 amountInUSD = parseFloat(value);
             }
         }
@@ -674,12 +767,12 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
         console.log(`Wallet Address: ${fullWalletAddress}`);
 
         // Calculate token rewards with the full wallet address
-        tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, fullWalletAddress);
+        tokenRewards = await calculateTokenRewards(amountInUSD, timestamp, fullWalletAddress, projectName);
 
         // Save transaction if USD amount is valid
         if (amountInUSD > 0) {
-            const tokenPrice = await getTokenPriceForTimestamp(timestamp, fullWalletAddress);
-            const bonusPercentage = await getBonusForTimestamp(timestamp, fullWalletAddress);
+            const tokenPrice = await getTokenPriceForTimestamp(timestamp, fullWalletAddress, projectName);
+            const bonusPercentage = await getBonusForTimestamp(timestamp, fullWalletAddress, projectName);
 
             console.log('\nFinal Transaction Details:');
             console.log(`Token Price: $${tokenPrice}`);
@@ -782,9 +875,12 @@ parseServer.start().then(async () => {
     app.listen(PORT, HOST, async () => {
         console.log(`Server is running!`);
 
-        // Start blockchain monitoring with BSC
+        // Start blockchain monitoring for BSC + ETH
         monitorBSCTransfers().catch((error) => {
-            console.error('Failed to start monitoring:', error);
+            console.error('Failed to start BSC monitoring:', error);
+        });
+        monitorETHTransfers().catch((error) => {
+            console.error('Failed to start ETH monitoring:', error);
         });
     });
 }).catch(error => {
@@ -855,9 +951,11 @@ module.exports = {
     addPricePeriod,
     addBonusPeriod,
     monitorBSCTransfers,
+    monitorETHTransfers,
     processTransaction,
     calculateTokenRewards,
     getTokenPriceForTimestamp,
     getBonusForTimestamp,
-    getBNBPrice
+    getBNBPrice,
+    getETHPrice
 };
