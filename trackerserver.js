@@ -782,6 +782,7 @@ async function processTransaction(type, tx, isHistorical = false, block = null, 
             console.log(`Total Tokens: ${tokenRewards.totalTokens}`);
 
             const transaction = new Transaction();
+            // contributor = buyer (tx.from). walletAddress = presale deposit wallet (treasury), not the buyer.
             const data = {
                 contributor: tx.from.toLowerCase(),
                 tokenType: type,
@@ -873,7 +874,9 @@ parseServer.start().then(async () => {
     const PORT = process.env.PORT || 1337;
     const HOST = process.env.HOST || '0.0.0.0';
     app.listen(PORT, HOST, async () => {
-        console.log(`Server is running!`);
+        const publicHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
+        console.log(`Server is running — Parse API http://${publicHost}:${PORT}/parse`);
+        console.log(`Parse Dashboard (browser): http://localhost:${PORT}/dashboard`);
 
         // Start blockchain monitoring for BSC + ETH
         monitorBSCTransfers().catch((error) => {
