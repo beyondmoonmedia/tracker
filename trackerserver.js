@@ -58,7 +58,22 @@ const PRICE_CACHE_DURATION = 60 * 1000; // 1 minute
 
 // Add this after alchemy initialization
 const bscProvider = new ethers.JsonRpcProvider(process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org/');
-const ethProvider = new ethers.JsonRpcProvider(process.env.ETH_RPC_URL || process.env.MAINNET_RPC_URL || 'https://eth.llamarpc.com');
+
+const ethRpcUrl =
+    process.env.ETH_RPC_URL ||
+    process.env.MAINNET_RPC_URL ||
+    (process.env.ALCHEMY_API_KEY
+        ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+        : null) ||
+    'https://eth.llamarpc.com';
+const ethProvider = new ethers.JsonRpcProvider(ethRpcUrl);
+
+function isRateLimitRpcError(err) {
+    const msg = String(err?.message || err?.shortMessage || err || '');
+    if (/429|rate.?limit|too many requests/i.test(msg)) return true;
+    const c = err?.code ?? err?.info?.error?.code ?? err?.error?.code;
+    return c === 429 || c === -32029;
+}
 
 // Add these constants at the top
 const aggregatorV3InterfaceABI = [
@@ -563,8 +578,10 @@ async function calculateTokenRewards(usdAmount, timestamp, walletAddress, projec
 }
 
 // Poll interval (ms). Many public RPCs don't support eth_newFilter/eth_getFilterChanges ("filter not found").
-const BSC_POLL_INTERVAL_MS = parseInt(process.env.BSC_POLL_INTERVAL_MS || '15000', 10); // 15s default
+const BSC_POLL_INTERVAL_MS = parseInt(process.env.BSC_POLL_INTERVAL_MS || '20000', 10);
+const BSC_MAX_BLOCKS_PER_POLL = parseInt(process.env.BSC_MAX_BLOCKS_PER_POLL || '6', 10);
 let bscPollLastBlock = 0;
+let bscRateLimitUntil = 0;
 
 async function monitorBSCTransfers() {
     const WalletConfig = Parse.Object.extend("WalletConfig");
@@ -585,18 +602,20 @@ async function monitorBSCTransfers() {
         projectName: c.get("projectName") || null,
     }));
 
-    console.log(`Starting BSC monitoring (polling) for ${walletList.length} wallets, interval ${BSC_POLL_INTERVAL_MS}ms`);
+    console.log(`Starting BSC monitoring (polling) for ${walletList.length} wallets, interval ${BSC_POLL_INTERVAL_MS}ms, max ${BSC_MAX_BLOCKS_PER_POLL} blocks/poll`);
 
     async function pollBlocks() {
+        if (Date.now() < bscRateLimitUntil) return;
         try {
             const latest = await bscProvider.getBlockNumber();
             const fromBlock = bscPollLastBlock
                 ? bscPollLastBlock + 1
                 : Math.max(0, latest - 20); // first run: only last 20 blocks
             if (fromBlock > latest) return;
-            bscPollLastBlock = latest;
 
-            for (let blockNum = fromBlock; blockNum <= latest; blockNum++) {
+            const toBlock = Math.min(latest, fromBlock + Math.max(1, BSC_MAX_BLOCKS_PER_POLL) - 1);
+
+            for (let blockNum = fromBlock; blockNum <= toBlock; blockNum++) {
                 const block = await bscProvider.getBlock(blockNum, true);
                 if (!block || !block.prefetchedTransactions) continue;
                 for (const tx of block.prefetchedTransactions) {
@@ -619,8 +638,14 @@ async function monitorBSCTransfers() {
                     }
                 }
             }
+
+            bscPollLastBlock = toBlock;
         } catch (error) {
-            if (error.message && !error.message.includes('filter not found')) {
+            if (isRateLimitRpcError(error)) {
+                const pauseMs = parseInt(process.env.BSC_RATE_LIMIT_PAUSE_MS || '90000', 10);
+                bscRateLimitUntil = Date.now() + pauseMs;
+                console.warn(`BSC RPC rate limited — pausing BSC polls ${pauseMs / 1000}s. Set BSC_RPC_URL with a provider API key.`);
+            } else if (error.message && !error.message.includes('filter not found')) {
                 console.error('BSC poll error:', error.message);
             }
         }
@@ -631,8 +656,10 @@ async function monitorBSCTransfers() {
     console.log('Transaction monitoring (polling) started successfully');
 }
 
-const ETH_POLL_INTERVAL_MS = parseInt(process.env.ETH_POLL_INTERVAL_MS || '15000', 10);
+const ETH_POLL_INTERVAL_MS = parseInt(process.env.ETH_POLL_INTERVAL_MS || '30000', 10);
+const ETH_MAX_BLOCKS_PER_POLL = parseInt(process.env.ETH_MAX_BLOCKS_PER_POLL || '6', 10);
 let ethPollLastBlock = 0;
+let ethRateLimitUntil = 0;
 
 async function monitorETHTransfers() {
     const WalletConfig = Parse.Object.extend("WalletConfig");
@@ -652,16 +679,20 @@ async function monitorETHTransfers() {
         projectName: c.get("projectName") || null,
     }));
 
-    console.log(`Starting ETH monitoring (polling) for ${walletList.length} wallets, interval ${ETH_POLL_INTERVAL_MS}ms`);
+    console.log(
+        `Starting ETH monitoring (polling) for ${walletList.length} wallets, interval ${ETH_POLL_INTERVAL_MS}ms, max ${ETH_MAX_BLOCKS_PER_POLL} blocks/poll (RPC: ${ethRpcUrl.replace(/\/v2\/.+/, '/v2/***')})`
+    );
 
     async function pollBlocks() {
+        if (Date.now() < ethRateLimitUntil) return;
         try {
             const latest = await ethProvider.getBlockNumber();
             const fromBlock = ethPollLastBlock ? ethPollLastBlock + 1 : Math.max(0, latest - 20);
             if (fromBlock > latest) return;
-            ethPollLastBlock = latest;
 
-            for (let blockNum = fromBlock; blockNum <= latest; blockNum++) {
+            const toBlock = Math.min(latest, fromBlock + Math.max(1, ETH_MAX_BLOCKS_PER_POLL) - 1);
+
+            for (let blockNum = fromBlock; blockNum <= toBlock; blockNum++) {
                 const block = await ethProvider.getBlock(blockNum, true);
                 if (!block || !block.prefetchedTransactions) continue;
                 for (const tx of block.prefetchedTransactions) {
@@ -684,8 +715,18 @@ async function monitorETHTransfers() {
                     }
                 }
             }
+
+            ethPollLastBlock = toBlock;
         } catch (error) {
-            console.error('ETH poll error:', error.message || error);
+            if (isRateLimitRpcError(error)) {
+                const pauseMs = parseInt(process.env.ETH_RATE_LIMIT_PAUSE_MS || '90000', 10);
+                ethRateLimitUntil = Date.now() + pauseMs;
+                console.warn(
+                    `ETH RPC rate limited — pausing ETH polls ${pauseMs / 1000}s. Use ETH_RPC_URL or ALCHEMY_API_KEY (eth-mainnet) for higher limits.`
+                );
+            } else {
+                console.error('ETH poll error:', error.message || error);
+            }
         }
     }
 

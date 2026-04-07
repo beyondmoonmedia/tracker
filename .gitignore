@@ -26,6 +26,8 @@ dist-ssr
 dist.zip
 
 .env
+.env.*
+!.env.example
 
 # SSL: never commit private keys
 *.key
